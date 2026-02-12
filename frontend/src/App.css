@@ -1,0 +1,336 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #0a0a0a 100%);
+}
+
+.app-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  background: rgba(0, 0, 0, 0.5);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  background: linear-gradient(90deg, #ffd700, #ff6b35);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.mode-toggle {
+  display: flex;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.mode-toggle button {
+  padding: 8px 16px;
+  border: none;
+  background: transparent;
+  color: #aaa;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.mode-toggle button.active {
+  background: rgba(255, 215, 0, 0.2);
+  color: #ffd700;
+}
+
+.mode-toggle button:hover:not(.active) {
+  color: #fff;
+}
+
+.app-main {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.connect-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 2rem;
+}
+
+.connect-prompt h2 {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(90deg, #ffd700, #ff6b35);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.connect-prompt p {
+  color: #aaa;
+  font-size: 1.2rem;
+  margin-bottom: 3rem;
+}
+
+.features {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2rem;
+  max-width: 900px;
+}
+
+.feature {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2rem;
+  border-radius: 16px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: transform 0.2s;
+}
+
+.feature:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.feature .icon {
+  font-size: 3rem;
+  display: block;
+  margin-bottom: 1rem;
+}
+
+.feature h3 {
+  margin: 0 0 0.5rem 0;
+  color: #ffd700;
+}
+
+.feature p {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+/* Game List Styles */
+.game-list {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.game-list h2 {
+  margin-bottom: 1.5rem;
+  color: #ffd700;
+}
+
+.games-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+}
+
+.game-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.game-card:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 215, 0, 0.3);
+}
+
+.game-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.game-card h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.game-status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+}
+
+.game-status.lobby {
+  background: rgba(100, 255, 100, 0.2);
+  color: #64ff64;
+}
+
+.game-status.active {
+  background: rgba(255, 215, 0, 0.2);
+  color: #ffd700;
+}
+
+.game-status.ended {
+  background: rgba(255, 100, 100, 0.2);
+  color: #ff6464;
+}
+
+.game-card-info {
+  display: flex;
+  gap: 1rem;
+  color: #aaa;
+  font-size: 0.9rem;
+}
+
+/* Spectator View Styles */
+.spectator-view {
+  padding: 2rem;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.spectator-view h2 {
+  margin-bottom: 1rem;
+  color: #ffd700;
+}
+
+.god-view-container {
+  flex: 1;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 16px;
+  padding: 2rem;
+  overflow: auto;
+}
+
+.player-roles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.player-role-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1rem;
+  border: 2px solid transparent;
+}
+
+.player-role-card.good {
+  border-color: rgba(100, 255, 100, 0.3);
+  background: rgba(100, 255, 100, 0.05);
+}
+
+.player-role-card.evil {
+  border-color: rgba(255, 100, 100, 0.3);
+  background: rgba(255, 100, 100, 0.05);
+}
+
+.player-role-card .role {
+  font-weight: bold;
+  font-size: 1.2rem;
+}
+
+.player-role-card.good .role {
+  color: #64ff64;
+}
+
+.player-role-card.evil .role {
+  color: #ff6464;
+}
+
+/* Game Scene Styles */
+.game-scene {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.game-ui-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  padding: 1rem;
+}
+
+.game-info-panel {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  background: rgba(0, 0, 0, 0.7);
+  padding: 1rem;
+  border-radius: 12px;
+  pointer-events: auto;
+}
+
+.quest-tracker {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.quest-indicator {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.quest-indicator.pending {
+  background: rgba(255, 255, 255, 0.1);
+  color: #aaa;
+}
+
+.quest-indicator.success {
+  background: rgba(100, 255, 100, 0.2);
+  border-color: #64ff64;
+  color: #64ff64;
+}
+
+.quest-indicator.fail {
+  background: rgba(255, 100, 100, 0.2);
+  border-color: #ff6464;
+  color: #ff6464;
+}
+
+.quest-indicator.current {
+  box-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+  border-color: #ffd700;
+}
+
+.back-button {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  padding: 8px 16px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.back-button:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

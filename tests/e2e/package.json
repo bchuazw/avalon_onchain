@@ -1,0 +1,19 @@
+{
+  "name": "avalon-e2e-tests",
+  "version": "0.1.0",
+  "description": "Avalon Game E2E Test Harness",
+  "scripts": {
+    "test": "ts-node src/run-e2e.ts",
+    "test:devnet": "NETWORK=devnet ts-node src/run-e2e.ts"
+  },
+  "dependencies": {
+    "avalon-agent-sdk": "file:../sdk",
+    "@solana/web3.js": "^1.91.0",
+    "@coral-xyz/anchor": "^0.30.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
