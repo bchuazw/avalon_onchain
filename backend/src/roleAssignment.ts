@@ -1,7 +1,9 @@
-import * as crypto from "crypto";
+import { PublicKey } from "@solana/web3.js";
+import { MerkleTree } from "merkletreejs";
+import keccak256 from "keccak256";
+import crypto from "crypto";
 
-// ==================== Enums ====================
-
+// Role definitions
 export enum Role {
   Unknown = 0,
   Merlin = 1,
@@ -18,20 +20,30 @@ export enum Alignment {
   Evil = 2,
 }
 
-// ==================== Role Distribution ====================
+export interface PlayerRole {
+  player: PublicKey;
+  role: Role;
+  alignment: Alignment;
+  index: number;
+}
 
-const ROLE_DISTRIBUTION: Record<number, Role[]> = {
+export interface RoleAssignment {
+  players: PlayerRole[];
+  merkleRoot: Buffer;
+  tree: MerkleTree;
+}
+
+// Role distribution for different player counts
+const ROLE_DISTRIBUTION: { [count: number]: Role[] } = {
   5: [Role.Merlin, Role.Percival, Role.Servant, Role.Morgana, Role.Assassin],
   6: [Role.Merlin, Role.Percival, Role.Servant, Role.Servant, Role.Morgana, Role.Assassin],
   7: [Role.Merlin, Role.Percival, Role.Servant, Role.Servant, Role.Morgana, Role.Assassin, Role.Minion],
   8: [Role.Merlin, Role.Percival, Role.Servant, Role.Servant, Role.Servant, Role.Morgana, Role.Assassin, Role.Minion],
   9: [Role.Merlin, Role.Percival, Role.Servant, Role.Servant, Role.Servant, Role.Servant, Role.Morgana, Role.Assassin, Role.Minion],
-  10: [Role.Merlin, Role.Percival, Role.Servant, Role.Servant, Role.Servant, Role.Servant, Role.Morgana, Role.Assassin, Role.Minion, Role.Minion],
+  10: [Role.Merlin, Role.Percival, Role.Servant, Role.Servant, Role.Servant, Role.Servant, Role.Morgana, Role.Morgana, Role.Assassin, Role.Minion],
 };
 
-// ==================== Helpers ====================
-
-export function getAlignment(role: Role): Alignment {
+function getAlignment(role: Role): Alignment {
   switch (role) {
     case Role.Merlin:
     case Role.Percival:
@@ -47,104 +59,159 @@ export function getAlignment(role: Role): Alignment {
 }
 
 /**
- * Deterministic Fisher-Yates shuffle using a VRF seed.
- * The same seed always produces the same permutation.
+ * Deterministically shuffle array using Fisher-Yates with seeded random
  */
 function seededShuffle<T>(array: T[], seed: Buffer): T[] {
   const result = [...array];
-  let seedState = Buffer.from(seed);
-
+  let seedCopy = Buffer.from(seed);
+  
   for (let i = result.length - 1; i > 0; i--) {
-    const hash = crypto
-      .createHash("sha256")
-      .update(seedState)
-      .update(Buffer.from([i]))
-      .digest();
+    // Generate random number from seed
+    const hash = crypto.createHash("sha256").update(seedCopy).update(Buffer.from([i])).digest();
     const randomValue = hash.readUInt32BE(0);
     const j = randomValue % (i + 1);
+    
     [result[i], result[j]] = [result[j], result[i]];
-    seedState = hash;
+    seedCopy = hash;
   }
-
+  
   return result;
 }
 
-// ==================== Public API ====================
-
-export interface PlayerAssignment {
-  playerPubkey: string;
-  playerIndex: number;
-  role: Role;
-  alignment: Alignment;
-  knownPlayers: string[];  // Pubkeys this player can see
+/**
+ * Create a leaf hash for the merkle tree
+ */
+export function createLeafHash(player: PublicKey, role: Role, alignment: Alignment, vrfSeed: Buffer): Buffer {
+  const data = Buffer.concat([
+    player.toBuffer(),
+    Buffer.from([role]),
+    Buffer.from([alignment]),
+    vrfSeed,
+  ]);
+  return keccak256(data);
 }
 
 /**
- * Assign roles to players deterministically from a VRF seed.
+ * Assign roles to players deterministically based on VRF seed
  */
 export function assignRoles(
-  playerPubkeys: string[],
-  vrfSeed: number[]
-): PlayerAssignment[] {
+  playerPubkeys: PublicKey[],
+  vrfSeed: Buffer
+): RoleAssignment {
   const playerCount = playerPubkeys.length;
+  
   if (playerCount < 5 || playerCount > 10) {
-    throw new Error(`Invalid player count: ${playerCount}. Must be 5-10.`);
+    throw new Error("Player count must be between 5 and 10");
   }
-
+  
+  // Get role distribution for this player count
   const roles = ROLE_DISTRIBUTION[playerCount];
-  const seedBuffer = Buffer.from(vrfSeed);
-  const shuffledRoles = seededShuffle(roles, seedBuffer);
-
-  const assignments: PlayerAssignment[] = shuffledRoles.map((role, index) => ({
-    playerPubkey: playerPubkeys[index],
-    playerIndex: index,
-    role,
-    alignment: getAlignment(role),
-    knownPlayers: [],
-  }));
-
-  // Populate known players for each role
-  for (const assignment of assignments) {
-    assignment.knownPlayers = determineKnownPlayers(assignment, assignments);
+  if (!roles) {
+    throw new Error(`No role distribution for ${playerCount} players`);
   }
-
-  return assignments;
+  
+  // Shuffle roles deterministically
+  const shuffledRoles = seededShuffle(roles, vrfSeed);
+  
+  // Assign roles to players
+  const playerRoles: PlayerRole[] = playerPubkeys.map((pubkey, index) => ({
+    player: pubkey,
+    role: shuffledRoles[index],
+    alignment: getAlignment(shuffledRoles[index]),
+    index,
+  }));
+  
+  // Create merkle tree
+  const leaves = playerRoles.map((pr) =>
+    createLeafHash(pr.player, pr.role, pr.alignment, vrfSeed)
+  );
+  
+  const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
+  const merkleRoot = tree.getRoot();
+  
+  return {
+    players: playerRoles,
+    merkleRoot,
+    tree,
+  };
 }
 
 /**
- * Determine which other players a given player can see, based on their role.
+ * Generate merkle proof for a specific player
  */
-function determineKnownPlayers(
-  player: PlayerAssignment,
-  allPlayers: PlayerAssignment[]
-): string[] {
+export function generateMerkleProof(
+  assignment: RoleAssignment,
+  playerIndex: number,
+  vrfSeed: Buffer
+): Buffer[] {
+  const playerRole = assignment.players[playerIndex];
+  const leaf = createLeafHash(
+    playerRole.player,
+    playerRole.role,
+    playerRole.alignment,
+    vrfSeed
+  );
+  
+  const proof = assignment.tree.getProof(leaf);
+  return proof.map((p) => p.data);
+}
+
+/**
+ * Get role information for a player (spectator view - god mode)
+ */
+export function getRoleInfo(
+  assignment: RoleAssignment,
+  playerPubkey: PublicKey
+): PlayerRole | undefined {
+  return assignment.players.find((p) => p.player.equals(playerPubkey));
+}
+
+/**
+ * Get all known players for a given role
+ */
+export function getKnownPlayers(
+  assignment: RoleAssignment,
+  playerPubkey: PublicKey
+): PublicKey[] {
+  const player = assignment.players.find((p) => p.player.equals(playerPubkey));
+  if (!player) return [];
+  
+  const known: PublicKey[] = [];
+  
   switch (player.role) {
     case Role.Merlin:
-      // Merlin sees all evil players
-      return allPlayers
-        .filter((p) => p.alignment === Alignment.Evil)
-        .map((p) => p.playerPubkey);
-
+      // Merlin sees all evil
+      assignment.players.forEach((p) => {
+        if (p.alignment === Alignment.Evil) {
+          known.push(p.player);
+        }
+      });
+      break;
+      
     case Role.Percival:
-      // Percival sees Merlin and Morgana (but doesn't know which is which)
-      return allPlayers
-        .filter((p) => p.role === Role.Merlin || p.role === Role.Morgana)
-        .map((p) => p.playerPubkey);
-
+      // Percival sees Merlin and Morgana
+      assignment.players.forEach((p) => {
+        if (p.role === Role.Merlin || p.role === Role.Morgana) {
+          known.push(p.player);
+        }
+      });
+      break;
+      
     case Role.Morgana:
     case Role.Assassin:
     case Role.Minion:
-      // Evil players see other evil players
-      return allPlayers
-        .filter(
-          (p) =>
-            p.alignment === Alignment.Evil &&
-            p.playerPubkey !== player.playerPubkey
-        )
-        .map((p) => p.playerPubkey);
-
+      // Evil sees other evil
+      assignment.players.forEach((p) => {
+        if (p.alignment === Alignment.Evil && !p.player.equals(playerPubkey)) {
+          known.push(p.player);
+        }
+      });
+      break;
+      
     default:
-      // Servants see nothing special
-      return [];
+      // Servants see no one
+      break;
   }
+  
+  return known;
 }

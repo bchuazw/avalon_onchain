@@ -5,15 +5,139 @@ import {
   Transaction,
   SystemProgram,
   LAMPORTS_PER_SOL,
-  sendAndConfirmTransaction,
-  TransactionInstruction,
+  Commitment,
 } from "@solana/web3.js";
-import { BN, Program, AnchorProvider, Wallet } from "@coral-xyz/anchor";
+import { Program, AnchorProvider, Wallet, BN, Idl } from "@coral-xyz/anchor";
 import axios from "axios";
-import * as crypto from "crypto";
+import bs58 from "bs58";
+import nacl from "tweetnacl";
 
-// ==================== Enums ====================
+// Program IDL (simplified - in production, import from file)
+export const AVALON_IDL: any = {
+  version: "0.1.0",
+  name: "avalon_game",
+  instructions: [
+    {
+      name: "createGame",
+      accounts: [
+        { name: "creator", isMut: true, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [{ name: "gameId", type: "u64" }],
+    },
+    {
+      name: "joinGame",
+      accounts: [
+        { name: "player", isMut: true, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [],
+    },
+    {
+      name: "startGame",
+      accounts: [
+        { name: "creator", isMut: false, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+      ],
+      args: [
+        { name: "vrfSeed", type: { array: ["u8", 32] } },
+        { name: "rolesCommitment", type: { array: ["u8", 32] } },
+      ],
+    },
+    {
+      name: "submitRoleReveal",
+      accounts: [
+        { name: "player", isMut: true, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+        { name: "playerRole", isMut: true, isSigner: false },
+        { name: "systemProgram", isMut: false, isSigner: false },
+      ],
+      args: [
+        { name: "role", type: "u8" },
+        { name: "alignment", type: "u8" },
+        { name: "merkleProof", type: { vec: { array: ["u8", 32] } } },
+      ],
+    },
+    {
+      name: "proposeTeam",
+      accounts: [
+        { name: "player", isMut: false, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+      ],
+      args: [{ name: "team", type: { vec: "publicKey" } }],
+    },
+    {
+      name: "voteTeam",
+      accounts: [
+        { name: "player", isMut: false, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+      ],
+      args: [{ name: "approve", type: "bool" }],
+    },
+    {
+      name: "submitQuestVote",
+      accounts: [
+        { name: "player", isMut: false, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+        { name: "playerRole", isMut: false, isSigner: false },
+      ],
+      args: [{ name: "success", type: "bool" }],
+    },
+    {
+      name: "assassinGuess",
+      accounts: [
+        { name: "assassin", isMut: false, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+      ],
+      args: [{ name: "target", type: "publicKey" }],
+    },
+    {
+      name: "advancePhase",
+      accounts: [
+        { name: "caller", isMut: false, isSigner: true },
+        { name: "gameState", isMut: true, isSigner: false },
+      ],
+      args: [],
+    },
+  ],
+  accounts: [
+    {
+      name: "GameState",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "gameId", type: "u64" },
+          { name: "creator", type: "publicKey" },
+          { name: "phase", type: "u8" },
+          { name: "playerCount", type: "u8" },
+          { name: "currentQuest", type: "u8" },
+          { name: "leaderIndex", type: "u8" },
+          { name: "successfulQuests", type: "u8" },
+          { name: "failedQuests", type: "u8" },
+          { name: "winner", type: { option: "u8" } },
+          { name: "vrfSeed", type: { array: ["u8", 32] } },
+          { name: "rolesCommitment", type: { array: ["u8", 32] } },
+        ],
+      },
+    },
+    {
+      name: "PlayerRole",
+      type: {
+        kind: "struct",
+        fields: [
+          { name: "gameId", type: "u64" },
+          { name: "player", type: "publicKey" },
+          { name: "role", type: "u8" },
+          { name: "alignment", type: "u8" },
+        ],
+      },
+    },
+  ],
+};
 
+// Enums
 export enum Role {
   Unknown = 0,
   Merlin = 1,
@@ -40,595 +164,426 @@ export enum GamePhase {
   Ended = 6,
 }
 
-// ==================== Types ====================
-
-export interface AgentConfig {
-  connection: Connection;
-  programId: PublicKey;
-  backendUrl: string;
-}
-
-export interface RoleInfo {
+// Types
+export interface PlayerInfo {
+  pubkey: PublicKey;
   role: Role;
   alignment: Alignment;
-  knownPlayers: PublicKey[];
+}
+
+export interface RoleInboxResponse {
+  gameId: string;
+  player: string;
+  role: Role;
+  alignment: Alignment;
+  knownPlayers: string[];
   merkleProof: number[][];
 }
 
-export interface GameStateInfo {
-  gameId: string;
-  creator: PublicKey;
-  phase: GamePhase;
-  playerCount: number;
-  currentQuest: number;
-  leaderIndex: number;
-  successfulQuests: number;
-  failedQuests: number;
-  winner: Alignment | null;
-  players: Array<{
-    pubkey: PublicKey;
-    role: Role;
-    alignment: Alignment;
-  } | null>;
-  quests: Array<{
-    requiredPlayers: number;
-    failRequired: number;
-    teamSize: number;
-    passed: boolean | null;
-    voteAttempts: number;
-  }>;
+export interface AvalonAgentConfig {
+  connection: Connection;
+  programId: PublicKey;
+  backendUrl: string;
+  commitment?: Commitment;
 }
-
-// ==================== IDL (minimal for client usage) ====================
-
-// We define just enough of the IDL for the client to build transactions.
-// The full IDL is generated by `anchor build` at target/idl/avalon_game.json.
-const AVALON_IDL = {
-  version: "0.1.0",
-  name: "avalon_game",
-  instructions: [
-    { name: "createGame", accounts: ["creator", "gameState", "systemProgram"], args: [{ name: "gameId", type: "u64" }] },
-    { name: "joinGame", accounts: ["player", "gameState", "systemProgram"], args: [] },
-    { name: "startGame", accounts: ["creator", "gameState"], args: [{ name: "vrfSeed", type: { array: ["u8", 32] } }, { name: "rolesCommitment", type: { array: ["u8", 32] } }] },
-    { name: "submitRoleReveal", accounts: ["player", "gameState", "playerRole", "systemProgram"], args: [{ name: "role", type: "u8" }, { name: "alignment", type: "u8" }, { name: "merkleProof", type: { vec: { array: ["u8", 32] } } }] },
-    { name: "proposeTeam", accounts: ["player", "gameState"], args: [{ name: "team", type: { vec: "publicKey" } }] },
-    { name: "voteTeam", accounts: ["player", "gameState"], args: [{ name: "approve", type: "bool" }] },
-    { name: "submitQuestVote", accounts: ["player", "gameState", "playerRole"], args: [{ name: "success", type: "bool" }] },
-    { name: "assassinGuess", accounts: ["assassin", "gameState"], args: [{ name: "target", type: "publicKey" }] },
-    { name: "advancePhase", accounts: ["caller", "gameState"], args: [] },
-  ],
-} as const;
-
-// ==================== Helper: PDA derivation ====================
-
-function deriveGamePDA(gameId: BN, programId: PublicKey): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("game"), gameId.toArrayLike(Buffer, "le", 8)],
-    programId
-  );
-}
-
-function derivePlayerRolePDA(
-  gamePDA: PublicKey,
-  player: PublicKey,
-  programId: PublicKey
-): [PublicKey, number] {
-  return PublicKey.findProgramAddressSync(
-    [Buffer.from("player_role"), gamePDA.toBuffer(), player.toBuffer()],
-    programId
-  );
-}
-
-// ==================== AvalonAgent ====================
 
 /**
- * AvalonAgent - SDK for AI agents to interact with the Avalon on Solana game.
- *
- * Usage:
- *   const keypair = AvalonAgent.createWallet();
- *   const agent = new AvalonAgent(keypair, { connection, programId, backendUrl });
- *   await agent.fundWallet(2 * LAMPORTS_PER_SOL);
- *   const { gamePDA, signature } = await agent.createGame(gameId);
+ * Avalon Agent SDK - For AI agents to play Avalon on Solana
  */
-export default class AvalonAgent {
-  private keypair: Keypair;
-  private config: AgentConfig;
-  private provider: AnchorProvider;
-  private _roleInfo: RoleInfo | null = null;
+export class AvalonAgent {
+  private connection: Connection;
+  private program: Program;
+  private wallet: Wallet;
+  private backendUrl: string;
+  private roleInfo: RoleInboxResponse | null = null;
 
-  constructor(keypair: Keypair, config: AgentConfig) {
-    this.keypair = keypair;
-    this.config = config;
+  constructor(
+    keypair: Keypair,
+    config: AvalonAgentConfig
+  ) {
+    this.connection = config.connection;
+    this.backendUrl = config.backendUrl;
+    this.wallet = new Wallet(keypair);
 
-    // Create an AnchorProvider for this agent
-    const wallet = new Wallet(keypair);
-    this.provider = new AnchorProvider(config.connection, wallet, {
-      commitment: "confirmed",
-      preflightCommitment: "confirmed",
-    });
+    const provider = new AnchorProvider(
+      config.connection,
+      this.wallet,
+      { commitment: config.commitment || "confirmed" }
+    );
+
+    this.program = new Program(AVALON_IDL, config.programId, provider);
   }
 
-  // ---- Static helpers ----
+  /**
+   * Get the agent's public key
+   */
+  get publicKey(): PublicKey {
+    return this.wallet.publicKey;
+  }
 
+  /**
+   * Get the agent's keypair (for signing)
+   */
+  get keypair(): Keypair {
+    return (this.wallet as any).payer;
+  }
+
+  // ==================== Wallet Management ====================
+
+  /**
+   * Create a new wallet
+   */
   static createWallet(): Keypair {
     return Keypair.generate();
   }
 
-  // ---- Properties ----
-
-  get publicKey(): PublicKey {
-    return this.keypair.publicKey;
+  /**
+   * Import wallet from private key (base58 encoded)
+   */
+  static importWallet(privateKeyBase58: string): Keypair {
+    const secretKey = bs58.decode(privateKeyBase58);
+    return Keypair.fromSecretKey(secretKey);
   }
 
-  get isGood(): boolean {
-    if (!this._roleInfo) return true; // default to good if unknown
-    return this._roleInfo.alignment === Alignment.Good;
+  /**
+   * Export wallet to base58 private key
+   */
+  static exportWallet(keypair: Keypair): string {
+    return bs58.encode(keypair.secretKey);
   }
 
-  get role(): Role {
-    return this._roleInfo?.role ?? Role.Unknown;
-  }
-
-  get alignment(): Alignment {
-    return this._roleInfo?.alignment ?? Alignment.Unknown;
-  }
-
-  // ---- Wallet ----
-
-  async getBalance(): Promise<number> {
-    return this.config.connection.getBalance(this.publicKey);
-  }
-
-  async fundWallet(lamports: number): Promise<string> {
-    const sig = await this.config.connection.requestAirdrop(
+  /**
+   * Fund wallet with SOL (from faucet)
+   */
+  async fundWallet(lamports: number = LAMPORTS_PER_SOL): Promise<string> {
+    const signature = await this.connection.requestAirdrop(
       this.publicKey,
       lamports
     );
-    await this.config.connection.confirmTransaction(sig, "confirmed");
-    return sig;
+    await this.connection.confirmTransaction(signature);
+    return signature;
   }
 
-  // ---- Game lifecycle ----
+  /**
+   * Get wallet balance
+   */
+  async getBalance(): Promise<number> {
+    return await this.connection.getBalance(this.publicKey);
+  }
 
-  async createGame(
-    gameId: BN
-  ): Promise<{ gamePDA: PublicKey; signature: string }> {
-    const [gamePDA] = deriveGamePDA(gameId, this.config.programId);
+  // ==================== Game Actions ====================
 
-    // Build the create_game instruction manually (no full IDL dependency)
-    const ix = await this.buildInstruction("createGame", {
-      gameId,
-      accounts: {
+  /**
+   * Create a new game
+   */
+  async createGame(gameId: BN): Promise<{ gamePDA: PublicKey; signature: string }> {
+    const [gamePDA] = PublicKey.findProgramAddressSync(
+      [Buffer.from("game"), gameId.toArrayLike(Buffer, "le", 8)],
+      this.program.programId
+    );
+
+    const tx = await this.program.methods
+      .createGame(gameId)
+      .accounts({
         creator: this.publicKey,
         gameState: gamePDA,
         systemProgram: SystemProgram.programId,
-      },
-    });
+      })
+      .rpc();
 
-    const tx = new Transaction().add(ix);
-    const signature = await sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
-
-    return { gamePDA, signature };
+    return { gamePDA, signature: tx };
   }
 
+  /**
+   * Join an existing game
+   */
   async joinGame(gamePDA: PublicKey): Promise<string> {
-    const ix = await this.buildInstruction("joinGame", {
-      accounts: {
+    const tx = await this.program.methods
+      .joinGame()
+      .accounts({
         player: this.publicKey,
         gameState: gamePDA,
         systemProgram: SystemProgram.programId,
-      },
-    });
+      })
+      .rpc();
 
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
+    return tx;
   }
 
+  /**
+   * Start the game (creator only)
+   */
   async startGame(
     gamePDA: PublicKey,
     vrfSeed: Buffer,
     rolesCommitment: Buffer
   ): Promise<string> {
-    const ix = await this.buildInstruction("startGame", {
-      vrfSeed: Array.from(vrfSeed),
-      rolesCommitment: Array.from(rolesCommitment),
-      accounts: {
+    const tx = await this.program.methods
+      .startGame(Array.from(vrfSeed), Array.from(rolesCommitment))
+      .accounts({
         creator: this.publicKey,
         gameState: gamePDA,
-      },
-    });
+      })
+      .rpc();
 
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
+    return tx;
   }
 
-  async submitRoleReveal(gamePDA: PublicKey): Promise<string> {
-    if (!this._roleInfo) {
-      throw new Error("Must fetch role before submitting reveal");
-    }
+  // ==================== Role Management ====================
 
-    const [playerRolePDA] = derivePlayerRolePDA(
-      gamePDA,
-      this.publicKey,
-      this.config.programId
+  /**
+   * Fetch role from role inbox (private)
+   */
+  async fetchRole(gameId: string): Promise<RoleInboxResponse> {
+    // Create authentication message
+    const message = `Reveal role for game ${gameId}`;
+    const messageBytes = Buffer.from(message);
+    
+    // Sign message
+    const signature = nacl.sign.detached(
+      messageBytes,
+      this.keypair.secretKey
     );
 
-    const ix = await this.buildInstruction("submitRoleReveal", {
-      role: this._roleInfo.role,
-      alignment: this._roleInfo.alignment,
-      merkleProof: this._roleInfo.merkleProof,
-      accounts: {
+    // Call role inbox
+    const response = await axios.post(`${this.backendUrl}/role-inbox/${gameId}`, {
+      playerPubkey: this.publicKey.toBase58(),
+      signature: Array.from(signature),
+      message,
+    });
+
+    this.roleInfo = response.data;
+    return this.roleInfo;
+  }
+
+  /**
+   * Submit role reveal to on-chain
+   */
+  async submitRoleReveal(gamePDA: PublicKey): Promise<string> {
+    if (!this.roleInfo) {
+      throw new Error("Role not fetched. Call fetchRole first.");
+    }
+
+    const [playerRolePDA] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("player_role"),
+        gamePDA.toBuffer(),
+        this.publicKey.toBuffer(),
+      ],
+      this.program.programId
+    );
+
+    const tx = await this.program.methods
+      .submitRoleReveal(
+        this.roleInfo.role,
+        this.roleInfo.alignment,
+        this.roleInfo.merkleProof.map((p) => Buffer.from(p))
+      )
+      .accounts({
         player: this.publicKey,
         gameState: gamePDA,
         playerRole: playerRolePDA,
         systemProgram: SystemProgram.programId,
-      },
-    });
+      })
+      .rpc();
 
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
+    return tx;
   }
 
+  /**
+   * Get my role (only available after fetchRole)
+   */
+  get myRole(): Role | null {
+    return this.roleInfo?.role ?? null;
+  }
+
+  /**
+   * Get my alignment (only available after fetchRole)
+   */
+  get myAlignment(): Alignment | null {
+    return this.roleInfo?.alignment ?? null;
+  }
+
+  /**
+   * Get players I know (only available after fetchRole)
+   */
+  get knownPlayers(): string[] {
+    return this.roleInfo?.knownPlayers ?? [];
+  }
+
+  /**
+   * Check if I'm evil
+   */
+  get isEvil(): boolean {
+    return this.myAlignment === Alignment.Evil;
+  }
+
+  /**
+   * Check if I'm good
+   */
+  get isGood(): boolean {
+    return this.myAlignment === Alignment.Good;
+  }
+
+  // ==================== Gameplay ====================
+
+  /**
+   * Propose a team (leader only)
+   */
   async proposeTeam(gamePDA: PublicKey, team: PublicKey[]): Promise<string> {
-    const ix = await this.buildInstruction("proposeTeam", {
-      team,
-      accounts: {
+    const tx = await this.program.methods
+      .proposeTeam(team)
+      .accounts({
         player: this.publicKey,
         gameState: gamePDA,
-      },
-    });
+      })
+      .rpc();
 
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
+    return tx;
   }
 
+  /**
+   * Vote on proposed team
+   */
   async voteTeam(gamePDA: PublicKey, approve: boolean): Promise<string> {
-    const ix = await this.buildInstruction("voteTeam", {
-      approve,
-      accounts: {
+    const tx = await this.program.methods
+      .voteTeam(approve)
+      .accounts({
         player: this.publicKey,
         gameState: gamePDA,
-      },
-    });
+      })
+      .rpc();
 
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
+    return tx;
   }
 
-  async submitQuestVote(
-    gamePDA: PublicKey,
-    success: boolean
-  ): Promise<string> {
-    const [playerRolePDA] = derivePlayerRolePDA(
-      gamePDA,
-      this.publicKey,
-      this.config.programId
+  /**
+   * Submit quest vote
+   */
+  async submitQuestVote(gamePDA: PublicKey, success: boolean): Promise<string> {
+    const [playerRolePDA] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from("player_role"),
+        gamePDA.toBuffer(),
+        this.publicKey.toBuffer(),
+      ],
+      this.program.programId
     );
 
-    const ix = await this.buildInstruction("submitQuestVote", {
-      success,
-      accounts: {
+    const tx = await this.program.methods
+      .submitQuestVote(success)
+      .accounts({
         player: this.publicKey,
         gameState: gamePDA,
         playerRole: playerRolePDA,
-      },
-    });
+      })
+      .rpc();
 
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
+    return tx;
   }
-
-  async assassinGuess(gamePDA: PublicKey, target: PublicKey): Promise<string> {
-    const ix = await this.buildInstruction("assassinGuess", {
-      target,
-      accounts: {
-        assassin: this.publicKey,
-        gameState: gamePDA,
-      },
-    });
-
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
-  }
-
-  async advancePhase(gamePDA: PublicKey): Promise<string> {
-    const ix = await this.buildInstruction("advancePhase", {
-      accounts: {
-        caller: this.publicKey,
-        gameState: gamePDA,
-      },
-    });
-
-    const tx = new Transaction().add(ix);
-    return sendAndConfirmTransaction(
-      this.config.connection,
-      tx,
-      [this.keypair],
-      { commitment: "confirmed" }
-    );
-  }
-
-  // ---- State queries ----
-
-  async getGameState(gamePDA: PublicKey): Promise<GameStateInfo> {
-    const accountInfo = await this.config.connection.getAccountInfo(gamePDA);
-    if (!accountInfo) {
-      throw new Error("Game account not found");
-    }
-
-    // Decode the account data using the Anchor discriminator + layout.
-    // For a cleaner decode, we'd use the full IDL with Program.account.gameState.fetch().
-    // Here we use a simpler approach via the backend's indexer.
-    try {
-      const response = await axios.get(
-        `${this.config.backendUrl}/game/${gamePDA.toBase58()}`
-      );
-      return response.data;
-    } catch {
-      // Fallback: return minimal info from raw account
-      return {
-        gameId: "unknown",
-        creator: PublicKey.default,
-        phase: GamePhase.Lobby,
-        playerCount: 0,
-        currentQuest: 0,
-        leaderIndex: 0,
-        successfulQuests: 0,
-        failedQuests: 0,
-        winner: null,
-        players: [],
-        quests: [],
-      };
-    }
-  }
-
-  // ---- Role management ----
-
-  async fetchRole(gameId: string): Promise<RoleInfo> {
-    // Sign a challenge to prove identity
-    const timestamp = Date.now().toString();
-    const message = Buffer.from(`avalon-role-request:${gameId}:${timestamp}`);
-    const signature = crypto
-      .createHash("sha256")
-      .update(Buffer.concat([message, this.keypair.secretKey.slice(0, 32)]))
-      .digest("hex");
-
-    const response = await axios.post(
-      `${this.config.backendUrl}/role-inbox/${gameId}`,
-      {
-        playerPubkey: this.publicKey.toBase58(),
-        timestamp,
-        signature,
-      }
-    );
-
-    this._roleInfo = {
-      role: response.data.role as Role,
-      alignment: response.data.alignment as Alignment,
-      knownPlayers: (response.data.knownPlayers || []).map(
-        (pk: string) => new PublicKey(pk)
-      ),
-      merkleProof: response.data.merkleProof || [],
-    };
-
-    return this._roleInfo;
-  }
-
-  // ---- Internal: instruction builder ----
 
   /**
-   * Builds a transaction instruction for the Avalon program.
-   * Uses Anchor's discriminator (first 8 bytes of sha256("global:<instruction_name>"))
-   * to construct the instruction data, then manually serialises arguments.
+   * Assassin attempts to kill Merlin
    */
-  private async buildInstruction(
-    instructionName: string,
-    params: Record<string, any>
-  ): Promise<TransactionInstruction> {
-    const { accounts, ...args } = params;
+  async assassinGuess(gamePDA: PublicKey, target: PublicKey): Promise<string> {
+    const tx = await this.program.methods
+      .assassinGuess(target)
+      .accounts({
+        assassin: this.publicKey,
+        gameState: gamePDA,
+      })
+      .rpc();
 
-    // Compute Anchor instruction discriminator
-    const discriminator = this.computeDiscriminator(instructionName);
-
-    // Serialize arguments
-    const argsData = this.serializeArgs(instructionName, args);
-
-    // Combine discriminator + args
-    const data = Buffer.concat([discriminator, argsData]);
-
-    // Build account keys from the accounts map
-    const accountKeys = this.buildAccountKeys(instructionName, accounts);
-
-    return new TransactionInstruction({
-      keys: accountKeys,
-      programId: this.config.programId,
-      data,
-    });
+    return tx;
   }
 
-  private computeDiscriminator(instructionName: string): Buffer {
-    // Anchor uses snake_case for the discriminator hash
-    const snakeName = instructionName.replace(
-      /[A-Z]/g,
-      (c) => `_${c.toLowerCase()}`
-    );
-    const hash = crypto
-      .createHash("sha256")
-      .update(`global:${snakeName}`)
-      .digest();
-    return hash.slice(0, 8);
+  // ==================== Game State ====================
+
+  /**
+   * Get game state
+   */
+  async getGameState(gamePDA: PublicKey): Promise<any> {
+    return await this.program.account.gameState.fetch(gamePDA);
   }
 
-  private serializeArgs(
-    instructionName: string,
-    args: Record<string, any>
-  ): Buffer {
-    const buffers: Buffer[] = [];
+  /**
+   * Get public game info from backend
+   */
+  async getPublicGameInfo(gameId: string): Promise<any> {
+    const response = await axios.get(`${this.backendUrl}/game/${gameId}`);
+    return response.data;
+  }
 
-    switch (instructionName) {
-      case "createGame": {
-        // u64 game_id
-        const gameId = args.gameId as BN;
-        buffers.push(gameId.toArrayLike(Buffer, "le", 8));
-        break;
-      }
-      case "startGame": {
-        // [u8; 32] vrf_seed
-        buffers.push(Buffer.from(args.vrfSeed));
-        // [u8; 32] roles_commitment
-        buffers.push(Buffer.from(args.rolesCommitment));
-        break;
-      }
-      case "submitRoleReveal": {
-        // u8 role (as enum variant)
-        buffers.push(Buffer.from([args.role]));
-        // u8 alignment (as enum variant)
-        buffers.push(Buffer.from([args.alignment]));
-        // Vec<[u8; 32]> merkle_proof
-        const proof = args.merkleProof as number[][];
-        // Vec length prefix (4 bytes LE)
-        const lenBuf = Buffer.alloc(4);
-        lenBuf.writeUInt32LE(proof.length, 0);
-        buffers.push(lenBuf);
-        for (const p of proof) {
-          buffers.push(Buffer.from(p));
-        }
-        break;
-      }
-      case "proposeTeam": {
-        // Vec<Pubkey> team
-        const team = args.team as PublicKey[];
-        const teamLenBuf = Buffer.alloc(4);
-        teamLenBuf.writeUInt32LE(team.length, 0);
-        buffers.push(teamLenBuf);
-        for (const pk of team) {
-          buffers.push(pk.toBuffer());
-        }
-        break;
-      }
-      case "voteTeam": {
-        // bool approve
-        buffers.push(Buffer.from([args.approve ? 1 : 0]));
-        break;
-      }
-      case "submitQuestVote": {
-        // bool success
-        buffers.push(Buffer.from([args.success ? 1 : 0]));
-        break;
-      }
-      case "assassinGuess": {
-        // Pubkey target
-        buffers.push((args.target as PublicKey).toBuffer());
-        break;
-      }
-      case "joinGame":
-      case "advancePhase":
-        // No args
-        break;
-      default:
-        throw new Error(`Unknown instruction: ${instructionName}`);
+  // ==================== Strategy Helpers ====================
+
+  /**
+   * Decide whether to approve a team (AI strategy)
+   */
+  shouldApproveTeam(team: string[], questNumber: number, failedQuests: number): boolean {
+    if (!this.roleInfo) {
+      // No role info, use heuristics
+      return true;
     }
 
-    return Buffer.concat(buffers);
+    const teamSize = team.length;
+    
+    if (this.isEvil) {
+      // Evil strategy: approve teams with evil players on them
+      const knownEvilOnTeam = team.filter((p) => this.knownPlayers.includes(p));
+      return knownEvilOnTeam.length > 0;
+    } else {
+      // Good strategy: be cautious
+      // If we know someone is evil and they're on the team, reject
+      const knownEvilOnTeam = team.filter((p) => this.knownPlayers.includes(p));
+      if (knownEvilOnTeam.length > 0) {
+        return false;
+      }
+      
+      // For later quests, be more selective
+      if (questNumber >= 3 && failedQuests >= 1) {
+        // Only approve if we trust the leader
+        return Math.random() > 0.3; // Replace with actual trust logic
+      }
+      
+      return true;
+    }
   }
 
-  private buildAccountKeys(
-    instructionName: string,
-    accounts: Record<string, PublicKey>
-  ): Array<{ pubkey: PublicKey; isSigner: boolean; isWritable: boolean }> {
-    // Map instruction names to their expected account layout
-    // Order must match the Anchor #[derive(Accounts)] struct field order
-    const layouts: Record<string, Array<{ name: string; isSigner: boolean; isWritable: boolean }>> = {
-      createGame: [
-        { name: "creator", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-        { name: "systemProgram", isSigner: false, isWritable: false },
-      ],
-      joinGame: [
-        { name: "player", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-        { name: "systemProgram", isSigner: false, isWritable: false },
-      ],
-      startGame: [
-        { name: "creator", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-      ],
-      submitRoleReveal: [
-        { name: "player", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-        { name: "playerRole", isSigner: false, isWritable: true },
-        { name: "systemProgram", isSigner: false, isWritable: false },
-      ],
-      proposeTeam: [
-        { name: "player", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-      ],
-      voteTeam: [
-        { name: "player", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-      ],
-      submitQuestVote: [
-        { name: "player", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-        { name: "playerRole", isSigner: false, isWritable: false },
-      ],
-      assassinGuess: [
-        { name: "assassin", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-      ],
-      advancePhase: [
-        { name: "caller", isSigner: true, isWritable: true },
-        { name: "gameState", isSigner: false, isWritable: true },
-      ],
-    };
+  /**
+   * Decide quest vote (only evil can fail)
+   */
+  shouldFailQuest(questNumber: number, teamSize: number): boolean {
+    if (!this.isEvil) {
+      return false; // Good must succeed
+    }
 
-    const layout = layouts[instructionName];
-    if (!layout) throw new Error(`No account layout for: ${instructionName}`);
+    // Evil strategy: fail when beneficial
+    // Early quests: sometimes succeed to gain trust
+    // Later quests: more likely to fail
+    const failProbability = questNumber >= 3 ? 0.8 : 0.4;
+    return Math.random() < failProbability;
+  }
 
-    return layout.map((acc) => ({
-      pubkey: accounts[acc.name],
-      isSigner: acc.isSigner,
-      isWritable: acc.isWritable,
-    }));
+  /**
+   * Decide assassination target (assassin only)
+   */
+  chooseAssassinationTarget(players: string[]): string | null {
+    if (this.myRole !== Role.Assassin) {
+      return null;
+    }
+
+    // Strategy: If we have info about Merlin, target them
+    // Otherwise, target the player who seems most knowledgeable
+    // For now, random choice among non-evil
+    const nonKnownEvil = players.filter((p) => !this.knownPlayers.includes(p));
+    if (nonKnownEvil.length > 0) {
+      return nonKnownEvil[Math.floor(Math.random() * nonKnownEvil.length)];
+    }
+    
+    return players[Math.floor(Math.random() * players.length)];
   }
 }
+
+// Export types and utilities
+export { PublicKey, Keypair, BN };
+export default AvalonAgent;

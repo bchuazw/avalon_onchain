@@ -1,292 +1,344 @@
-import express from "express";
-import cors from "cors";
+import express, { Request, Response } from "express";
 import { WebSocketServer, WebSocket } from "ws";
-import * as http from "http";
-import * as crypto from "crypto";
-import { assignRoles, PlayerAssignment, Role, Alignment } from "./roleAssignment";
-import { createRolesMerkleTree } from "./merkleTree";
+import cors from "cors";
+import dotenv from "dotenv";
+import { Connection, PublicKey, Keypair, clusterApiUrl } from "@solana/web3.js";
+import { Program, AnchorProvider, Wallet } from "@coral-xyz/anchor";
+import { GameIndexer, GameState } from "./indexer";
+import { assignRoles, generateMerkleProof, RoleAssignment, getRoleInfo, getKnownPlayers } from "./roleAssignment";
+import * as fs from "fs";
+import * as path from "path";
 
-// ==================== Configuration ====================
+dotenv.config();
 
-const PORT = parseInt(process.env.PORT || "3000", 10);
-const WS_PORT = parseInt(process.env.WS_PORT || "8081", 10);
-const SPECTATOR_TOKEN = process.env.SPECTATOR_TOKEN || "spectator-secret";
-const CORS_ORIGIN = process.env.CORS_ORIGIN || "*";
+// In-memory storage for role assignments (in production, use Redis or database)
+const roleAssignments: Map<string, RoleAssignment> = new Map();
+const roleRevealed: Map<string, Set<string>> = new Map(); // gameId -> Set of player pubkeys
 
-// ==================== In-Memory Store ====================
-
-interface GameData {
-  gameId: string;
-  assignments: PlayerAssignment[];
-  vrfSeed: number[];
-  merkleRoot: string;  // hex
-  proofs: string[][];  // hex arrays
-  createdAt: number;
-  gamePDA?: string;
-}
-
-const gamesStore = new Map<string, GameData>();
-const wsClients = new Set<WebSocket>();
-
-// ==================== Express App ====================
-
+// Express app setup
 const app = express();
-app.use(cors({ origin: CORS_ORIGIN }));
+app.use(cors());
 app.use(express.json());
 
-// ---- Health Check ----
+// Solana connection
+const NETWORK = process.env.SOLANA_NETWORK || "devnet";
+const connection = new Connection(
+  process.env.SOLANA_RPC_URL || clusterApiUrl(NETWORK as any),
+  "confirmed"
+);
 
-app.get("/health", (_req, res) => {
-  res.json({
-    status: "ok",
-    uptime: process.uptime(),
-    games: gamesStore.size,
-    timestamp: new Date().toISOString(),
+// Program ID
+const PROGRAM_ID = new PublicKey(
+  process.env.PROGRAM_ID || "AvalonGame111111111111111111111111111111111"
+);
+
+// Setup indexer
+const indexer = new GameIndexer(connection, PROGRAM_ID);
+
+// WebSocket server for spectator view
+const wss = new WebSocketServer({ port: parseInt(process.env.WS_PORT || "8081") });
+
+// Connected clients
+const clients: Map<string, WebSocket> = new Map(); // gameId -> client
+
+/**
+ * Initialize the server
+ */
+async function initializeServer() {
+  console.log(`[Server] Starting Avalon Backend on ${NETWORK}`);
+  console.log(`[Server] Program ID: ${PROGRAM_ID.toBase58()}`);
+
+  // Start indexer
+  indexer.start();
+
+  // Listen for game events
+  indexer.on("event", (event) => {
+    console.log(`[Event] ${event.type}:`, event.data);
+    
+    // Broadcast to spectators
+    broadcastToSpectators(event.gameId, {
+      type: "event",
+      data: event,
+    });
   });
+
+  indexer.on("stateUpdate", (state) => {
+    broadcastToSpectators(state.gameId, {
+      type: "stateUpdate",
+      data: state,
+    });
+  });
+
+  console.log("[Server] Initialization complete");
+}
+
+/**
+ * Broadcast message to all spectators of a game
+ */
+function broadcastToSpectators(gameId: string, message: any) {
+  const payload = JSON.stringify(message);
+  
+  wss.clients.forEach((client) => {
+    const clientGameId = (client as any).gameId;
+    if (clientGameId === gameId && client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  });
+}
+
+// API Routes
+
+/**
+ * Health check
+ */
+app.get("/health", (req: Request, res: Response) => {
+  res.json({ status: "ok", network: NETWORK, timestamp: Date.now() });
 });
 
-// ---- List Games ----
-
-app.get("/games", (_req, res) => {
-  const games = Array.from(gamesStore.values()).map((g) => ({
-    gameId: g.gameId,
-    playerCount: g.assignments.length,
-    createdAt: g.createdAt,
-    gamePDA: g.gamePDA,
-  }));
-  res.json({ games });
-});
-
-// ---- Get Game (public state) ----
-
-app.get("/game/:gameIdOrPDA", (req, res) => {
-  const { gameIdOrPDA } = req.params;
-
-  // Try to find by gameId first, then by PDA
-  let game = gamesStore.get(gameIdOrPDA);
-  if (!game) {
-    game = Array.from(gamesStore.values()).find((g) => g.gamePDA === gameIdOrPDA);
-  }
-
-  if (!game) {
+/**
+ * Get game state (public info only)
+ */
+app.get("/game/:gameId", (req: Request, res: Response) => {
+  const { gameId } = req.params;
+  const state = indexer.getGameState(gameId);
+  
+  if (!state) {
     return res.status(404).json({ error: "Game not found" });
   }
-
-  // Return public state only (no role details)
-  res.json({
-    gameId: game.gameId,
-    playerCount: game.assignments.length,
-    players: game.assignments.map((a) => ({
-      pubkey: a.playerPubkey,
-      index: a.playerIndex,
-    })),
-    merkleRoot: game.merkleRoot,
-    createdAt: game.createdAt,
-    gamePDA: game.gamePDA,
-  });
+  
+  res.json(state);
 });
 
-// ---- Assign Roles (backend-initiated) ----
+/**
+ * Get all active games
+ */
+app.get("/games", (req: Request, res: Response) => {
+  const games = indexer.getAllGames();
+  res.json(games);
+});
 
-app.post("/assign-roles/:gameId", (req, res) => {
+/**
+ * Assign roles for a game (called by game creator after game start)
+ */
+app.post("/assign-roles/:gameId", async (req: Request, res: Response) => {
   const { gameId } = req.params;
-  const { playerPubkeys, vrfSeed, gamePDA } = req.body;
+  const { playerPubkeys, vrfSeed } = req.body;
 
-  if (!playerPubkeys || !Array.isArray(playerPubkeys)) {
-    return res.status(400).json({ error: "playerPubkeys array required" });
-  }
-
-  if (!vrfSeed || !Array.isArray(vrfSeed) || vrfSeed.length !== 32) {
-    return res.status(400).json({ error: "vrfSeed must be 32-byte array" });
+  if (!playerPubkeys || !vrfSeed) {
+    return res.status(400).json({ error: "Missing playerPubkeys or vrfSeed" });
   }
 
   try {
+    // Convert to PublicKey objects
+    const players = playerPubkeys.map((pk: string) => new PublicKey(pk));
+    const seed = Buffer.from(vrfSeed);
+
     // Assign roles deterministically
-    const assignments = assignRoles(playerPubkeys, vrfSeed);
+    const assignment = assignRoles(players, seed);
+    
+    // Store assignment
+    roleAssignments.set(gameId, assignment);
+    roleRevealed.set(gameId, new Set());
 
-    // Build merkle tree
-    const { merkleRoot, proofs } = createRolesMerkleTree(assignments, vrfSeed);
+    console.log(`[Roles] Assigned roles for game ${gameId}`);
+    console.log(`[Roles] Merkle Root: ${assignment.merkleRoot.toString("hex")}`);
 
-    // Store game data
-    const gameData: GameData = {
-      gameId,
-      assignments,
-      vrfSeed,
-      merkleRoot: merkleRoot.toString("hex"),
-      proofs: proofs.map((p) => p.map((b) => b.toString("hex"))),
-      createdAt: Date.now(),
-      gamePDA,
-    };
-
-    gamesStore.set(gameId, gameData);
-
-    console.log(`[ROLES] Game ${gameId}: Assigned ${assignments.length} roles`);
-    assignments.forEach((a) => {
-      console.log(
-        `  Player ${a.playerIndex}: ${Role[a.role]} (${Alignment[a.alignment]})`
-      );
-    });
-
-    // Broadcast to spectators
-    broadcastToSpectators({
-      type: "roles_assigned",
-      gameId,
-      playerCount: assignments.length,
-    });
-
+    // Return merkle root for on-chain commitment
     res.json({
-      gameId,
-      merkleRoot: Array.from(merkleRoot),
-      playerCount: assignments.length,
-      // Do NOT return roles here - they go through the inbox
+      merkleRoot: Array.from(assignment.merkleRoot),
+      playerCount: players.length,
     });
   } catch (error: any) {
-    console.error(`[ROLES] Error assigning roles:`, error);
+    console.error("[Roles] Error assigning roles:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ---- Role Inbox (authenticated per-player) ----
-
-app.post("/role-inbox/:gameId", (req, res) => {
+/**
+ * Role Inbox - Get private role info (authenticated by signature)
+ */
+app.post("/role-inbox/:gameId", async (req: Request, res: Response) => {
   const { gameId } = req.params;
-  const { playerPubkey, timestamp, signature } = req.body;
+  const { playerPubkey, signature, message } = req.body;
 
-  if (!playerPubkey || !timestamp || !signature) {
-    return res.status(400).json({ error: "playerPubkey, timestamp, signature required" });
+  if (!playerPubkey || !signature) {
+    return res.status(400).json({ error: "Missing playerPubkey or signature" });
   }
 
-  const game = gamesStore.get(gameId);
-  if (!game) {
-    return res.status(404).json({ error: "Game not found" });
+  try {
+    const assignment = roleAssignments.get(gameId);
+    if (!assignment) {
+      return res.status(404).json({ error: "Role assignment not found" });
+    }
+
+    // Verify signature (simple verification)
+    const playerKey = new PublicKey(playerPubkey);
+    
+    // In production, verify the signature properly:
+    // const isValid = nacl.sign.detached.verify(
+    //   Buffer.from(message),
+    //   Buffer.from(signature),
+    //   playerKey.toBytes()
+    // );
+    // if (!isValid) return res.status(401).json({ error: "Invalid signature" });
+
+    // Get role info
+    const roleInfo = getRoleInfo(assignment, playerKey);
+    if (!roleInfo) {
+      return res.status(404).json({ error: "Player not in game" });
+    }
+
+    // Check if already revealed
+    const revealed = roleRevealed.get(gameId);
+    if (revealed?.has(playerPubkey)) {
+      return res.status(400).json({ error: "Role already revealed" });
+    }
+
+    // Generate merkle proof
+    const merkleProof = generateMerkleProof(assignment, roleInfo.index, assignment.players[0].player.toBuffer());
+
+    // Mark as revealed
+    revealed?.add(playerPubkey);
+
+    // Get known players for this role
+    const knownPlayers = getKnownPlayers(assignment, playerKey);
+
+    res.json({
+      gameId,
+      player: playerPubkey,
+      role: roleInfo.role,
+      alignment: roleInfo.alignment,
+      knownPlayers: knownPlayers.map((pk) => pk.toBase58()),
+      merkleProof: merkleProof.map((p) => Array.from(p)),
+    });
+  } catch (error: any) {
+    console.error("[RoleInbox] Error:", error);
+    res.status(500).json({ error: error.message });
   }
-
-  // Find player assignment
-  const assignment = game.assignments.find(
-    (a) => a.playerPubkey === playerPubkey
-  );
-
-  if (!assignment) {
-    return res.status(404).json({ error: "Player not found in this game" });
-  }
-
-  // Verify request freshness (within 60 seconds)
-  const ts = parseInt(timestamp, 10);
-  if (Math.abs(Date.now() - ts) > 60_000) {
-    return res.status(401).json({ error: "Request expired" });
-  }
-
-  // For MVP, we trust the signature field (in production, verify with ed25519)
-  // The signature is a hash of the challenge + part of the player's secret key
-  // Since we can't verify the secret key server-side without it, we accept
-  // any request that includes a valid playerPubkey that's in the game.
-  // Production would use ed25519 signature verification.
-
-  console.log(
-    `[INBOX] Player ${playerPubkey.slice(0, 8)}... fetched role for game ${gameId}: ${Role[assignment.role]}`
-  );
-
-  // Return role info + merkle proof
-  const proofIndex = assignment.playerIndex;
-  const proof = game.proofs[proofIndex] || [];
-
-  res.json({
-    role: assignment.role,
-    alignment: assignment.alignment,
-    knownPlayers: assignment.knownPlayers,
-    merkleProof: proof.map((hex) => Array.from(Buffer.from(hex, "hex"))),
-  });
 });
 
-// ---- God View (spectator only, requires auth) ----
-
-app.get("/god-view/:gameId", (req, res) => {
+/**
+ * Spectator God View - Get full game state with roles
+ */
+app.get("/god-view/:gameId", (req: Request, res: Response) => {
   const { gameId } = req.params;
-  const authToken =
-    (req.query.authToken as string) ||
-    req.headers.authorization?.replace("Bearer ", "");
+  const { authToken } = req.query;
 
-  if (!authToken || authToken !== SPECTATOR_TOKEN) {
-    return res.status(401).json({ error: "Unauthorized. Valid spectator token required." });
+  // Simple auth check (in production, use proper JWT or API key)
+  const validToken = process.env.SPECTATOR_TOKEN || "spectator-secret";
+  if (authToken !== validToken) {
+    return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const game = gamesStore.get(gameId);
-  if (!game) {
+  const assignment = roleAssignments.get(gameId);
+  const gameState = indexer.getGameState(gameId);
+
+  if (!assignment || !gameState) {
     return res.status(404).json({ error: "Game not found" });
   }
 
-  // Full game state with all roles visible (spectator only)
+  // Return full game state with all roles (god view)
   res.json({
-    gameId: game.gameId,
-    assignments: game.assignments.map((a) => ({
-      playerPubkey: a.playerPubkey,
-      playerIndex: a.playerIndex,
-      role: Role[a.role],
-      alignment: Alignment[a.alignment],
-      knownPlayers: a.knownPlayers,
+    gameId,
+    phase: gameState.phase,
+    players: assignment.players.map((p) => ({
+      pubkey: p.player.toBase58(),
+      role: Role[p.role],
+      alignment: Alignment[p.alignment],
     })),
-    merkleRoot: game.merkleRoot,
-    vrfSeed: game.vrfSeed,
-    createdAt: game.createdAt,
-    gamePDA: game.gamePDA,
+    quests: gameState.currentQuest,
+    successfulQuests: gameState.successfulQuests,
+    failedQuests: gameState.failedQuests,
+    winner: gameState.winner,
   });
 });
 
-// ==================== WebSocket Server (Spectator) ====================
+/**
+ * Get merkle proof for a player
+ */
+app.get("/merkle-proof/:gameId/:playerPubkey", (req: Request, res: Response) => {
+  const { gameId, playerPubkey } = req.params;
 
-const wsServer = new WebSocketServer({ port: WS_PORT });
+  try {
+    const assignment = roleAssignments.get(gameId);
+    if (!assignment) {
+      return res.status(404).json({ error: "Game not found" });
+    }
 
-wsServer.on("connection", (ws, req) => {
-  console.log(`[WS] Spectator connected from ${req.socket.remoteAddress}`);
-  wsClients.add(ws);
+    const playerKey = new PublicKey(playerPubkey);
+    const roleInfo = getRoleInfo(assignment, playerKey);
+
+    if (!roleInfo) {
+      return res.status(404).json({ error: "Player not in game" });
+    }
+
+    const vrfSeed = Buffer.alloc(32); // Get from storage in production
+    const merkleProof = generateMerkleProof(assignment, roleInfo.index, vrfSeed);
+
+    res.json({
+      merkleProof: merkleProof.map((p) => Array.from(p)),
+      leaf: {
+        player: playerPubkey,
+        role: roleInfo.role,
+        alignment: roleInfo.alignment,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// WebSocket handling
+wss.on("connection", (ws: WebSocket, req: any) => {
+  console.log("[WebSocket] New connection");
+
+  ws.on("message", (message: string) => {
+    try {
+      const data = JSON.parse(message);
+      
+      if (data.type === "subscribe" && data.gameId) {
+        (ws as any).gameId = data.gameId;
+        console.log(`[WebSocket] Client subscribed to game ${data.gameId}`);
+        
+        // Send current state
+        const state = indexer.getGameState(data.gameId);
+        if (state) {
+          ws.send(JSON.stringify({ type: "stateUpdate", data: state }));
+        }
+      }
+    } catch (error) {
+      console.error("[WebSocket] Error handling message:", error);
+    }
+  });
 
   ws.on("close", () => {
-    wsClients.delete(ws);
-    console.log("[WS] Spectator disconnected");
-  });
-
-  ws.on("error", (err) => {
-    console.error("[WS] Error:", err);
-    wsClients.delete(ws);
+    console.log("[WebSocket] Connection closed");
   });
 
   // Send welcome message
-  ws.send(
-    JSON.stringify({
-      type: "connected",
-      activeGames: gamesStore.size,
-      timestamp: new Date().toISOString(),
-    })
-  );
+  ws.send(JSON.stringify({ type: "connected", message: "Welcome to Avalon Spectator" }));
 });
 
-function broadcastToSpectators(data: any) {
-  const message = JSON.stringify(data);
-  for (const client of wsClients) {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(message);
-    }
-  }
-}
-
-// ==================== Start Server ====================
+// Start server
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
-  console.log("╔════════════════════════════════════════════════════════╗");
-  console.log("║     AVALON SOLANA - BACKEND SERVER                      ║");
-  console.log("╚════════════════════════════════════════════════════════╝");
-  console.log(`  HTTP API:    http://localhost:${PORT}`);
-  console.log(`  WebSocket:   ws://localhost:${WS_PORT}`);
-  console.log(`  Environment: ${process.env.NODE_ENV || "development"}`);
-  console.log("");
-  console.log("Endpoints:");
-  console.log(`  GET  /health                - Health check`);
-  console.log(`  GET  /games                 - List all games`);
-  console.log(`  GET  /game/:id              - Get game (public state)`);
-  console.log(`  POST /assign-roles/:gameId  - Assign roles`);
-  console.log(`  POST /role-inbox/:gameId    - Fetch private role`);
-  console.log(`  GET  /god-view/:gameId      - Full state (spectator)`);
-  console.log("");
+  console.log(`[Server] HTTP API listening on port ${PORT}`);
+  console.log(`[Server] WebSocket listening on port ${process.env.WS_PORT || 8081}`);
+  initializeServer();
 });
 
-export default app;
+// Graceful shutdown
+process.on("SIGTERM", () => {
+  console.log("[Server] SIGTERM received, shutting down...");
+  indexer.stop();
+  wss.close();
+  process.exit(0);
+});
+
+process.on("SIGINT", () => {
+  console.log("[Server] SIGINT received, shutting down...");
+  indexer.stop();
+  wss.close();
+  process.exit(0);
+});

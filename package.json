@@ -1,24 +1,27 @@
 {
   "name": "avalon-solana",
   "version": "0.1.0",
-  "description": "Semi-trusted onchain Avalon game for AI agents on Solana",
-  "license": "MIT",
+  "description": "Avalon Game on Solana",
   "scripts": {
-    "lint:fix": "prettier */*.js \"*/**/*{.js,.ts}\" -w",
-    "lint": "prettier */*.js \"*/**/*{.js,.ts}\" --check",
-    "verify": "node verify.js"
+    "test": "anchor test",
+    "build": "anchor build",
+    "deploy": "anchor deploy",
+    "localnet": "solana-test-validator"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
-    "@solana/web3.js": "^1.91.0"
+    "@solana/spl-token": "^0.4.14",
+    "@solana/web3.js": "^1.98.4",
+    "bn.js": "^5.2.1",
+    "bs58": "^5.0.0"
   },
   "devDependencies": {
-    "@types/bn.js": "^5.1.0",
-    "@types/chai": "^4.3.0",
-    "@types/mocha": "^9.0.0",
-    "chai": "^4.3.4",
-    "mocha": "^9.0.3",
-    "prettier": "^2.6.2",
+    "@coral-xyz/anchor-cli": "^0.31.2",
+    "@types/bn.js": "^5.1.5",
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.6",
+    "chai": "^4.4.1",
+    "mocha": "^10.2.0",
     "ts-mocha": "^10.0.0",
     "typescript": "^5.3.3"
   }
