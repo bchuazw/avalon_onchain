@@ -2,7 +2,9 @@
 
 ## If you see `Error: Cannot find module '/app/dist/index.js'`
 
-**Fix:** Set Railway **Start Command** to **`npm run start:prod`**. That runs build then start so `dist/` exists when Node starts.
+**Recommended fix:** Set Railway **Start Command** to **`npm run start:ts`**. That runs the app from TypeScript source (no `dist/` needed), so it works even when the build step doesn’t persist `dist/` between build and run.
+
+**Alternative:** Use **`npm run start:prod`** so start runs build then `node dist/index.js`. If `dist/` still isn’t there at runtime (e.g. build and run in different layers), use **`npm run start:ts`** instead.
 
 **When Root Directory is set to `/backend`** (your case):
 
@@ -17,7 +19,7 @@ Railway’s working directory is already the backend folder, so **do not** use `
 |--------|--------|
 | **Root Directory** | `backend` (or `/backend`) |
 | **Build Command** | `npm install && npm run build` ← no `cd backend` |
-| **Start Command** | **`npm run start:prod`** (builds then runs; fixes missing dist) |
+| **Start Command** | **`npm run start:ts`** (runs from source; no dist needed) or `npm run start:prod` |
 
 **If Root Directory is the repo root** (not backend):
 
@@ -41,9 +43,9 @@ Railway’s working directory is already the backend folder, so **do not** use `
 | Setting | Value |
 |--------|--------|
 | **Build Command** | `npm install && npm run build` |
-| **Start Command** | `npm run start:prod` **or** `npm run build && node dist/index.js` |
+| **Start Command** | **`npm run start:ts`** (recommended) or `npm run start:prod` |
 
-Use **`npm run start:prod`** so the start phase builds and then runs. That way `dist/` is created at startup if the build phase didn’t persist it (fixes `Cannot find module '/app/dist/index.js'`).
+Use **`npm run start:ts`** to run from TypeScript source so you don’t depend on `dist/` at all (fixes `Cannot find module '/app/dist/index.js'` when build and run don’t share the same filesystem).
 
 **When Root Directory is repo root:**
 
@@ -124,7 +126,7 @@ Then build can stay `cd backend && npm install && npm run build`.
 
 - [ ] **Root / build / start**: Either project root = `backend` or build/start run from `backend`.
 - [ ] **Build**: `npm install && npm run build` (inside `backend`).
-- [ ] **Start**: `npm start` (inside `backend`).
+- [ ] **Start**: `npm run start:ts` or `npm start` (inside `backend`).
 - [ ] **PORT**: Not set in env (use Railway’s `PORT`).
 - [ ] **SOLANA_NETWORK**: `devnet`.
 - [ ] **SOLANA_RPC_URL**: `https://api.devnet.solana.com` or your RPC URL.

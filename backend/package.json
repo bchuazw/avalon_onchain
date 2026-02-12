@@ -7,6 +7,7 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "start:prod": "npm run build && node dist/index.js",
+    "start:ts": "node --require ts-node/register src/server.ts",
     "dev": "ts-node src/server.ts",
     "simulate": "ts-node src/gameSimulation.ts",
     "test": "jest"
@@ -21,7 +22,9 @@
     "@switchboard-xyz/solana.js": "^3.2.0",
     "merkletreejs": "^0.3.11",
     "keccak256": "^1.0.6",
-    "crypto-js": "^4.2.0"
+    "crypto-js": "^4.2.0",
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.2"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
@@ -29,8 +32,6 @@
     "@types/cors": "^2.8.17",
     "@types/crypto-js": "^4.2.2",
     "@types/node": "^20.11.0",
-    "typescript": "^5.3.3",
-    "ts-node": "^10.9.2",
     "jest": "^29.7.0",
     "@types/jest": "^29.5.11"
   }
