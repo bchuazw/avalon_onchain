@@ -72,7 +72,13 @@ Set these in Railway → your service → **Variables**:
 | `SPECTATOR_TOKEN` | e.g. `your-secret-token` | For `/god-view/:gameId?authToken=...`. Default: `spectator-secret`. |
 | `WS_PORT` | *(see WebSocket note below)* | Separate WS port is **not** exposed on Railway. |
 
-### 5. **WebSocket on Railway**
+**IDL for indexer (fix “IDL file not found” / “No program instance”)**  
+The indexer needs the Anchor IDL to scan game accounts. On Railway the repo often has no `target/idl/` in the image.
+
+- **Option A – URL:** Set `IDL_JSON_URL` in Railway Variables to a public URL of `avalon_game.json` (e.g. raw GitHub: `https://raw.githubusercontent.com/your-org/your-repo/main/avalon_onchain/target/idl/avalon_game.json`). The server will fetch it at startup.
+- **Option B – Commit:** From repo root after `anchor build`: `mkdir -p avalon_onchain/backend/target/idl && cp avalon_onchain/target/idl/avalon_game.json avalon_onchain/backend/target/idl/` then commit and push. The server will find it at `backend/target/idl/avalon_game.json` in the container.
+
+### 6. **WebSocket on Railway**
 
 - Railway exposes **one port per service** (the one in `PORT`).
 - The backend currently starts **HTTP on `PORT`** and **WebSocket on `WS_PORT` (8081)**.
@@ -88,7 +94,7 @@ Set these in Railway → your service → **Variables**:
 
 For now you can deploy with **Option A** and add Option B later if you want real-time spectator updates.
 
-### 6. **IDL file (required for indexer)**
+### 7. **IDL file (required for indexer)**
 
 The backend expects the IDL at one of:
 
@@ -117,12 +123,12 @@ cp target/idl/avalon_game.json backend/target/idl/
 
 Then build can stay `cd backend && npm install && npm run build`.
 
-### 7. **Health check**
+### 8. **Health check**
 
 - Railway can use the root path or a health endpoint.
 - Your app has no `/` route; suggest adding a simple **health route** (e.g. `GET /health` returns 200) and set Railway’s health check to that URL (e.g. `https://your-app.railway.app/health`).
 
-### 8. **Summary checklist**
+### 9. **Summary checklist**
 
 - [ ] **Root / build / start**: Either project root = `backend` or build/start run from `backend`.
 - [ ] **Build**: `npm install && npm run build` (inside `backend`).
@@ -134,12 +140,14 @@ Then build can stay `cd backend && npm install && npm run build`.
 - [ ] **IDL**: Available at runtime (e.g. `backend/target/idl/avalon_game.json` via copy or commit).
 - [ ] **WebSocket**: Accept that WS on 8081 won’t be public, or plan to serve WS on `PORT` later.
 
-### 9. **Quick variable list (copy-paste)**
+### 10. **Quick variable list (copy-paste)**
 
 ```env
 SOLANA_NETWORK=devnet
 SOLANA_RPC_URL=https://api.devnet.solana.com
 PROGRAM_ID=<your-devnet-program-id>
+# Optional: public URL to avalon_game.json so the indexer can scan game accounts
+# IDL_JSON_URL=https://raw.githubusercontent.com/your-org/your-repo/main/avalon_onchain/target/idl/avalon_game.json
 ```
 
 Do **not** set `PORT`; Railway sets it.

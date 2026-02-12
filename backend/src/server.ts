@@ -32,62 +32,66 @@ const PROGRAM_ID = new PublicKey(
   process.env.PROGRAM_ID || "8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1"
 );
 
-// Load program for account scanning
-let program: Program<any> | null = null;
-try {
-  // Try multiple possible paths for IDL
+/** Load IDL from URL (e.g. Railway env IDL_JSON_URL) or from local paths. */
+async function loadProgram(): Promise<Program<any> | null> {
+  const dummyWallet = {
+    publicKey: PublicKey.default,
+    signTransaction: async (tx: any) => tx,
+    signAllTransactions: async (txs: any[]) => txs,
+  };
+  const provider = new AnchorProvider(connection, dummyWallet as Wallet, { commitment: "confirmed" });
+
+  const idlUrl = process.env.IDL_JSON_URL;
+  if (idlUrl) {
+    try {
+      const res = await fetch(idlUrl);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const idl = await res.json();
+      idl.address = PROGRAM_ID.toBase58();
+      const program = new Program(idl, provider);
+      console.log(`[Server] Program loaded for account scanning from IDL_JSON_URL`);
+      return program;
+    } catch (e) {
+      console.warn("[Server] Failed to load IDL from IDL_JSON_URL:", e);
+    }
+  }
+
   const possiblePaths = [
     path.join(__dirname, "../target/idl/avalon_game.json"),
     path.join(__dirname, "../../target/idl/avalon_game.json"),
     path.join(process.cwd(), "target/idl/avalon_game.json"),
     path.join(process.cwd(), "../target/idl/avalon_game.json"),
   ];
-  
-  let idlPath: string | null = null;
   for (const p of possiblePaths) {
     if (fs.existsSync(p)) {
-      idlPath = p;
-      break;
+      const idl = JSON.parse(fs.readFileSync(p, "utf-8"));
+      idl.address = PROGRAM_ID.toBase58();
+      const program = new Program(idl, provider);
+      console.log(`[Server] Program loaded for account scanning from ${p}`);
+      return program;
     }
   }
-  
-  if (idlPath) {
-    const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
-    // Ensure IDL address matches program ID
-    idl.address = PROGRAM_ID.toBase58();
-    // Create a minimal provider for account fetching (no signing needed)
-    const dummyWallet = {
-      publicKey: PublicKey.default,
-      signTransaction: async (tx: any) => tx,
-      signAllTransactions: async (txs: any[]) => txs,
-    };
-    const provider = new AnchorProvider(connection, dummyWallet as Wallet, { commitment: "confirmed" });
-    // Program constructor: new Program(idl, provider) - uses IDL's address field
-    // Or: new Program(idl, programId, provider) - explicitly sets program ID
-    program = new Program(idl, provider);
-    console.log(`[Server] Program loaded for account scanning from ${idlPath}`);
-  } else {
-    console.warn(`[Server] IDL file not found. Tried: ${possiblePaths.join(", ")}`);
-  }
-} catch (error) {
-  console.warn("[Server] Could not load program for account scanning:", error);
+  console.warn(`[Server] IDL file not found. Tried: ${possiblePaths.join(", ")}. Set IDL_JSON_URL to a JSON URL (e.g. raw GitHub) for Railway.`);
+  return null;
 }
 
-// Setup indexer with program instance
-const indexer = new GameIndexer(connection, PROGRAM_ID, program || undefined);
-
-// Listen for game state updates and broadcast to WebSocket clients
-indexer.on("stateUpdate", (gameState: GameState) => {
-  // Broadcast to all clients subscribed to this game
-  connectedClients.forEach((client) => {
-    if (client.readyState === WebSocket.OPEN && (client as any).gameId === gameState.gameId) {
-      client.send(JSON.stringify({ type: "stateUpdate", data: gameState }));
-    }
-  });
-});
+// Indexer is created in main() after loadProgram()
+let indexer!: GameIndexer;
 
 // WebSocket server for spectator view
 const wss = new WebSocketServer({ port: parseInt(process.env.WS_PORT || "8081") });
+
+/** Create indexer and start HTTP server after IDL is loaded (supports IDL_JSON_URL). */
+async function main() {
+  const program = await loadProgram();
+  indexer = new GameIndexer(connection, PROGRAM_ID, program || undefined);
+  indexer.on("stateUpdate", (gameState: GameState) => {
+    connectedClients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN && (client as any).gameId === gameState.gameId) {
+        client.send(JSON.stringify({ type: "stateUpdate", data: gameState }));
+      }
+    });
+  });
 
 // Connected clients
 const clients: Map<string, WebSocket> = new Map(); // gameId -> client
@@ -400,13 +404,17 @@ wss.on("connection", (ws: WebSocket, req: any) => {
   ws.send(JSON.stringify({ type: "connected", message: "Welcome to Avalon Spectator" }));
 });
 
-// Start server
-const PORT = process.env.PORT || 3000;
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`[Server] HTTP API listening on port ${PORT}`);
+    console.log(`[Server] WebSocket listening on port ${process.env.WS_PORT || 8081}`);
+    initializeServer();
+  });
+}
 
-app.listen(PORT, () => {
-  console.log(`[Server] HTTP API listening on port ${PORT}`);
-  console.log(`[Server] WebSocket listening on port ${process.env.WS_PORT || 8081}`);
-  initializeServer();
+main().catch((err) => {
+  console.error("[Server] Startup failed:", err);
+  process.exit(1);
 });
 
 // Graceful shutdown
