@@ -1,0 +1,813 @@
+{
+  "address": "8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1",
+  "metadata": {
+    "name": "avalon_game",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Avalon Game on Solana"
+  },
+  "instructions": [
+    {
+      "name": "create_game",
+      "discriminator": [
+        124,
+        69,
+        75,
+        66,
+        184,
+        220,
+        72,
+        206
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  103,
+                  97,
+                  109,
+                  101
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "game_id"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "game_id",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "join_game",
+      "discriminator": [
+        107,
+        112,
+        18,
+        38,
+        56,
+        173,
+        60,
+        128
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "start_game",
+      "discriminator": [
+        249,
+        47,
+        252,
+        172,
+        184,
+        162,
+        245,
+        14
+      ],
+      "accounts": [
+        {
+          "name": "creator",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "vrf_seed",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        },
+        {
+          "name": "roles_commitment",
+          "type": {
+            "array": [
+              "u8",
+              32
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "submit_role_reveal",
+      "discriminator": [
+        53,
+        36,
+        114,
+        1,
+        134,
+        217,
+        16,
+        157
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "player_role",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  108,
+                  97,
+                  121,
+                  101,
+                  114,
+                  95,
+                  114,
+                  111,
+                  108,
+                  101
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "game_state"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "role",
+          "type": {
+            "defined": {
+              "name": "Role"
+            }
+          }
+        },
+        {
+          "name": "alignment",
+          "type": {
+            "defined": {
+              "name": "Alignment"
+            }
+          }
+        },
+        {
+          "name": "merkle_proof",
+          "type": {
+            "vec": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "propose_team",
+      "discriminator": [
+        220,
+        16,
+        230,
+        60,
+        229,
+        150,
+        184,
+        162
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "team",
+          "type": {
+            "vec": "pubkey"
+          }
+        }
+      ]
+    },
+    {
+      "name": "vote_team",
+      "discriminator": [
+        178,
+        28,
+        237,
+        26,
+        162,
+        226,
+        84,
+        28
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "approve",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "submit_quest_vote",
+      "discriminator": [
+        146,
+        50,
+        230,
+        149,
+        73,
+        32,
+        188,
+        201
+      ],
+      "accounts": [
+        {
+          "name": "player",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        },
+        {
+          "name": "player_role"
+        }
+      ],
+      "args": [
+        {
+          "name": "success",
+          "type": "bool"
+        }
+      ]
+    },
+    {
+      "name": "assassin_guess",
+      "discriminator": [
+        56,
+        46,
+        167,
+        249,
+        117,
+        76,
+        81,
+        179
+      ],
+      "accounts": [
+        {
+          "name": "assassin",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        }
+      ],
+      "args": [
+        {
+          "name": "target",
+          "type": "pubkey"
+        }
+      ]
+    },
+    {
+      "name": "advance_phase",
+      "discriminator": [
+        91,
+        6,
+        51,
+        226,
+        144,
+        243,
+        74,
+        113
+      ],
+      "accounts": [
+        {
+          "name": "caller",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "game_state",
+          "writable": true
+        }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "GameState",
+      "discriminator": [
+        144,
+        94,
+        208,
+        172,
+        248,
+        99,
+        134,
+        120
+      ]
+    },
+    {
+      "name": "PlayerRole",
+      "discriminator": [
+        156,
+        24,
+        122,
+        27,
+        21,
+        206,
+        148,
+        46
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "GameNotInLobby",
+      "msg": "Game is not in lobby phase"
+    },
+    {
+      "code": 6001,
+      "name": "GameFull",
+      "msg": "Game is full"
+    },
+    {
+      "code": 6002,
+      "name": "PlayerAlreadyInGame",
+      "msg": "Player already in game"
+    },
+    {
+      "code": 6003,
+      "name": "NotEnoughPlayers",
+      "msg": "Not enough players to start"
+    },
+    {
+      "code": 6004,
+      "name": "NotCreator",
+      "msg": "Only creator can perform this action"
+    },
+    {
+      "code": 6005,
+      "name": "WrongPhase",
+      "msg": "Game is not in the correct phase"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidMerkleProof",
+      "msg": "Invalid merkle proof"
+    },
+    {
+      "code": 6007,
+      "name": "PlayerNotInGame",
+      "msg": "Player not in game"
+    },
+    {
+      "code": 6008,
+      "name": "NotLeader",
+      "msg": "Not the team leader"
+    },
+    {
+      "code": 6009,
+      "name": "InvalidTeamSize",
+      "msg": "Invalid team size"
+    },
+    {
+      "code": 6010,
+      "name": "AlreadyVoted",
+      "msg": "Already voted"
+    },
+    {
+      "code": 6011,
+      "name": "NotOnTeam",
+      "msg": "Not on the quest team"
+    },
+    {
+      "code": 6012,
+      "name": "GoodMustSucceed",
+      "msg": "Good players must vote success"
+    },
+    {
+      "code": 6013,
+      "name": "NotAssassin",
+      "msg": "Not the assassin"
+    }
+  ],
+  "types": [
+    {
+      "name": "Alignment",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Unknown"
+          },
+          {
+            "name": "Good"
+          },
+          {
+            "name": "Evil"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GamePhase",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Lobby"
+          },
+          {
+            "name": "RoleAssignment"
+          },
+          {
+            "name": "TeamBuilding"
+          },
+          {
+            "name": "Voting"
+          },
+          {
+            "name": "Quest"
+          },
+          {
+            "name": "Assassination"
+          },
+          {
+            "name": "Ended"
+          }
+        ]
+      }
+    },
+    {
+      "name": "GameState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "creator",
+            "type": "pubkey"
+          },
+          {
+            "name": "phase",
+            "type": {
+              "defined": {
+                "name": "GamePhase"
+              }
+            }
+          },
+          {
+            "name": "players",
+            "type": {
+              "array": [
+                {
+                  "option": {
+                    "defined": {
+                      "name": "PlayerState"
+                    }
+                  }
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "player_count",
+            "type": "u8"
+          },
+          {
+            "name": "current_quest",
+            "type": "u8"
+          },
+          {
+            "name": "quests",
+            "type": {
+              "array": [
+                {
+                  "defined": {
+                    "name": "QuestState"
+                  }
+                },
+                5
+              ]
+            }
+          },
+          {
+            "name": "leader_index",
+            "type": "u8"
+          },
+          {
+            "name": "successful_quests",
+            "type": "u8"
+          },
+          {
+            "name": "failed_quests",
+            "type": "u8"
+          },
+          {
+            "name": "winner",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "Alignment"
+                }
+              }
+            }
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "last_action_at",
+            "type": "i64"
+          },
+          {
+            "name": "vrf_seed",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "roles_commitment",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerRole",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "game_id",
+            "type": "u64"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "Role"
+              }
+            }
+          },
+          {
+            "name": "alignment",
+            "type": {
+              "defined": {
+                "name": "Alignment"
+              }
+            }
+          },
+          {
+            "name": "known_players",
+            "type": {
+              "array": [
+                {
+                  "option": "pubkey"
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PlayerState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "pubkey",
+            "type": "pubkey"
+          },
+          {
+            "name": "role",
+            "type": {
+              "defined": {
+                "name": "Role"
+              }
+            }
+          },
+          {
+            "name": "alignment",
+            "type": {
+              "defined": {
+                "name": "Alignment"
+              }
+            }
+          },
+          {
+            "name": "is_ready",
+            "type": "bool"
+          },
+          {
+            "name": "team_votes_cast",
+            "type": "u8"
+          },
+          {
+            "name": "quests_participated",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QuestState",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "required_players",
+            "type": "u8"
+          },
+          {
+            "name": "fail_required",
+            "type": "u8"
+          },
+          {
+            "name": "proposed_team",
+            "type": {
+              "array": [
+                {
+                  "option": "pubkey"
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "team_size",
+            "type": "u8"
+          },
+          {
+            "name": "votes",
+            "type": {
+              "array": [
+                {
+                  "option": "bool"
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "quest_votes",
+            "type": {
+              "array": [
+                {
+                  "option": "bool"
+                },
+                8
+              ]
+            }
+          },
+          {
+            "name": "passed",
+            "type": {
+              "option": "bool"
+            }
+          },
+          {
+            "name": "vote_attempts",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Role",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Unknown"
+          },
+          {
+            "name": "Merlin"
+          },
+          {
+            "name": "Percival"
+          },
+          {
+            "name": "Servant"
+          },
+          {
+            "name": "Morgana"
+          },
+          {
+            "name": "Assassin"
+          },
+          {
+            "name": "Minion"
+          }
+        ]
+      }
+    }
+  ]
+}
