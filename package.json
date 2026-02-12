@@ -6,7 +6,9 @@
     "test": "anchor test",
     "build": "anchor build",
     "deploy": "anchor deploy",
-    "localnet": "solana-test-validator"
+    "localnet": "solana-test-validator",
+    "start": "cd backend && node dist/index.js",
+    "start:backend": "cd backend && node dist/index.js"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",

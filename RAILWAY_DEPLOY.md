@@ -1,25 +1,53 @@
 # Railway Backend Deployment Settings
 
+## If you see `Error: Cannot find module '/app/dist/index.js'`
+
+**When Root Directory is set to `/backend`** (your case):
+
+Railway’s working directory is already the backend folder, so **do not** use `cd backend` in your commands. The problem is usually one of:
+
+1. **Build command is wrong** – If you use `cd backend && npm run build`, that runs from the backend folder and tries to `cd backend` again (into a non‑existent `backend/backend`). The build may fail or run in the wrong place.
+2. **Build never created `dist/`** – Check the **build logs** and confirm `tsc` runs and finishes without errors. You should see “Compiling…” or similar and no red errors.
+
+**Correct settings when Root Directory = `backend` (or `/backend`):**
+
+| Setting | Value |
+|--------|--------|
+| **Root Directory** | `backend` (or `/backend`) |
+| **Build Command** | `npm install && npm run build` ← no `cd backend` |
+| **Start Command** | `npm start` or `node dist/index.js` ← no `cd backend` |
+
+**If Root Directory is the repo root** (not backend):
+
+| Setting | Value |
+|--------|--------|
+| **Build Command** | `cd backend && npm install && npm run build` |
+| **Start Command** | `cd backend && node dist/index.js` or `npm start` |
+
+---
+
 ## Settings to Note
 
 ### 1. **Root directory / Service type**
-- **Root directory**: Set to `backend` (or deploy from repo root and set build/start commands to run inside `backend`).
-- **Or** create the Railway project from inside the `backend` folder so the root is `backend`.
+- **Root Directory = `backend`**: Build and start run **inside** the backend folder. Use **Build:** `npm install && npm run build`, **Start:** `npm start`. Do **not** put `cd backend` in these commands.
+- **Root Directory = repo root**: Use **Build:** `cd backend && npm install && npm run build`, **Start:** `cd backend && node dist/index.js`.
 
 ### 2. **Build & Start commands**
+
+**When Root Directory is `backend`** (recommended):
 
 | Setting | Value |
 |--------|--------|
 | **Build Command** | `npm install && npm run build` |
 | **Start Command** | `npm start` |
-| **Watch Paths** | (optional) `backend/**` if repo root is project root |
+| **Watch Paths** | (optional) `src/**` |
 
-If the Railway service root is the **repo root** (avalon_onchain):
+**When Root Directory is repo root:**
 
 | Setting | Value |
 |--------|--------|
 | **Build Command** | `cd backend && npm install && npm run build` |
-| **Start Command** | `cd backend && npm start` |
+| **Start Command** | `cd backend && node dist/index.js` or `npm start` |
 
 ### 3. **Environment variables (required)**
 
