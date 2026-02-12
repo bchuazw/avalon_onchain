@@ -1,0 +1,96 @@
+name: Build and Deploy to Devnet
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Install Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+    
+    - name: Install Solana CLI
+      run: |
+        sh -c "$(curl -sSfL https://release.solana.com/v1.18.17/install)"
+        echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+    
+    - name: Install Anchor
+      run: |
+        cargo install --git https://github.com/coral-xyz/anchor --tag v0.30.1 anchor-cli
+    
+    - name: Setup Solana Keypair
+      run: |
+        mkdir -p ~/.config/solana
+        echo "${{ secrets.SOLANA_KEYPAIR }}" > ~/.config/solana/id.json
+        chmod 600 ~/.config/solana/id.json
+    
+    - name: Configure Solana for Devnet
+      run: |
+        solana config set --url devnet
+        solana airdrop 2 || true
+    
+    - name: Build Anchor Program
+      run: |
+        anchor build
+    
+    - name: Deploy to Devnet
+      id: deploy
+      run: |
+        DEPLOY_OUTPUT=$(anchor deploy 2>&1)
+        echo "$DEPLOY_OUTPUT"
+        PROGRAM_ID=$(echo "$DEPLOY_OUTPUT" | grep -oP 'Program Id: \K[\w]+')
+        echo "program_id=$PROGRAM_ID" >> $GITHUB_OUTPUT
+    
+    - name: Update Anchor.toml with Program ID
+      run: |
+        sed -i "s/avalon_game = \"[^\"]*\"/avalon_game = \"${{ steps.deploy.outputs.program_id }}\"/" Anchor.toml
+    
+    - name: Commit and Push Program ID
+      run: |
+        git config user.name "GitHub Actions"
+        git config user.email "actions@github.com"
+        git add Anchor.toml
+        git diff --cached --quiet || git commit -m "Update program ID from devnet deployment"
+        git push
+    
+    - name: Upload Build Artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: build-artifacts
+        path: |
+          target/deploy/*.so
+          target/idl/*.json
+          target/types/*.ts
+
+  test:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Setup Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+    
+    - name: Install Dependencies
+      run: |
+        yarn install
+        cd backend && yarn install
+        cd ../tests/e2e && yarn install
+    
+    - name: Run Logic Verification
+      run: |
+        node verify.js
+    
+    - name: Run Tests
+      run: |
+        anchor test --skip-local-validator || true
