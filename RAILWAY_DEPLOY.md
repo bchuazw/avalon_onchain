@@ -2,6 +2,8 @@
 
 ## If you see `Error: Cannot find module '/app/dist/index.js'`
 
+**Fix:** Set Railway **Start Command** to **`npm run start:prod`**. That runs build then start so `dist/` exists when Node starts.
+
 **When Root Directory is set to `/backend`** (your case):
 
 Railway’s working directory is already the backend folder, so **do not** use `cd backend` in your commands. The problem is usually one of:
@@ -15,7 +17,7 @@ Railway’s working directory is already the backend folder, so **do not** use `
 |--------|--------|
 | **Root Directory** | `backend` (or `/backend`) |
 | **Build Command** | `npm install && npm run build` ← no `cd backend` |
-| **Start Command** | `npm start` or `node dist/index.js` ← no `cd backend` |
+| **Start Command** | **`npm run start:prod`** (builds then runs; fixes missing dist) |
 
 **If Root Directory is the repo root** (not backend):
 
@@ -39,8 +41,9 @@ Railway’s working directory is already the backend folder, so **do not** use `
 | Setting | Value |
 |--------|--------|
 | **Build Command** | `npm install && npm run build` |
-| **Start Command** | `npm start` |
-| **Watch Paths** | (optional) `src/**` |
+| **Start Command** | `npm run start:prod` **or** `npm run build && node dist/index.js` |
+
+Use **`npm run start:prod`** so the start phase builds and then runs. That way `dist/` is created at startup if the build phase didn’t persist it (fixes `Cannot find module '/app/dist/index.js'`).
 
 **When Root Directory is repo root:**
 
