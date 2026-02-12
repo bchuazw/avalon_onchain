@@ -3,7 +3,7 @@ import { WebSocketServer, WebSocket } from "ws";
 import cors from "cors";
 import dotenv from "dotenv";
 import { Connection, PublicKey, Keypair, clusterApiUrl } from "@solana/web3.js";
-import { Program, AnchorProvider, Wallet } from "@coral-xyz/anchor";
+import { Program, AnchorProvider, Wallet, Idl } from "@coral-xyz/anchor";
 import { GameIndexer, GameState } from "./indexer";
 import { assignRoles, generateMerkleProof, RoleAssignment, getRoleInfo, getKnownPlayers, Role, Alignment } from "./roleAssignment";
 import * as fs from "fs";
@@ -46,8 +46,8 @@ async function loadProgram(): Promise<Program<any> | null> {
     try {
       const res = await fetch(idlUrl);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const idl = await res.json();
-      idl.address = PROGRAM_ID.toBase58();
+      const idl = (await res.json()) as Idl;
+      (idl as any).address = PROGRAM_ID.toBase58();
       const program = new Program(idl, provider);
       console.log(`[Server] Program loaded for account scanning from IDL_JSON_URL`);
       return program;
