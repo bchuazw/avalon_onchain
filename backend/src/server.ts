@@ -57,6 +57,8 @@ async function loadProgram(): Promise<Program<any> | null> {
   }
 
   const possiblePaths = [
+    path.join(process.cwd(), "idl/avalon_game.json"),       // backend/idl/ (commit this for Railway)
+    path.join(__dirname, "../idl/avalon_game.json"),
     path.join(__dirname, "../target/idl/avalon_game.json"),
     path.join(__dirname, "../../target/idl/avalon_game.json"),
     path.join(process.cwd(), "target/idl/avalon_game.json"),
