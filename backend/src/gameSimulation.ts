@@ -1,7 +1,6 @@
 import { Connection, PublicKey, Keypair, SystemProgram, clusterApiUrl, Transaction, VersionedTransaction } from "@solana/web3.js";
 import * as anchor from "@coral-xyz/anchor";
-import { Program, AnchorProvider, BN } from "@coral-xyz/anchor";
-import { AvalonGame } from "../../target/types/avalon_game";
+import { Program, AnchorProvider, BN, Idl } from "@coral-xyz/anchor";
 import { assignRoles, generateMerkleProof, Role, Alignment } from "./roleAssignment";
 import * as crypto from "crypto";
 import * as fs from "fs";
@@ -80,7 +79,7 @@ interface SimulatedPlayer {
 }
 
 // Helper function to create a provider for a player
-function createPlayerProvider(player: Keypair, connection: Connection, idl: any): Program<AvalonGame> {
+function createPlayerProvider(player: Keypair, connection: Connection, idl: Idl): Program {
   const playerProvider = new AnchorProvider(
     connection,
     {
@@ -103,7 +102,7 @@ function createPlayerProvider(player: Keypair, connection: Connection, idl: any)
     { commitment: "confirmed" }
   );
   
-  return new Program(idl, playerProvider) as Program<AvalonGame>;
+  return new Program(idl, playerProvider) as anchor.Program;
 }
 
 async function runGameSimulation() {
@@ -158,7 +157,7 @@ async function runGameSimulation() {
   console.log(`[Sim] Using Program ID: ${PROGRAM_ID.toBase58()}`);
   console.log(`[Sim] IDL address: ${idl.address}`);
   // Create program - Anchor 0.30.1 uses (idl, provider) and reads program ID from IDL address
-  const program = new Program(idl, provider) as Program<AvalonGame>;
+  const program = new Program(idl, provider) as anchor.Program;
 
   // Airdrop to wallet
   await airdropIfNeeded(connection, wallet.publicKey, 5);
@@ -313,7 +312,7 @@ async function runGameSimulation() {
   console.log();
 
   // Get game state to check current quest
-  let gameState = await program.account.gameState.fetch(gamePDA);
+  let gameState = await (program.account as any).gameState.fetch(gamePDA);
   console.log(`  Current Phase: ${JSON.stringify(gameState.phase)}`);
   console.log(`  Current Quest: ${gameState.currentQuest}`);
   console.log();
@@ -434,7 +433,7 @@ async function runGameSimulation() {
     console.log(`  Votes: ${approveVotes} approve, ${rejectVotes} reject`);
 
     // Check if team was approved
-    gameState = await program.account.gameState.fetch(gamePDA);
+    gameState = await (program.account as any).gameState.fetch(gamePDA);
     const phase = JSON.stringify(gameState.phase);
 
     if (phase.includes("quest")) {
@@ -495,7 +494,7 @@ async function runGameSimulation() {
 
       await sleep(1000);
 
-      gameState = await program.account.gameState.fetch(gamePDA);
+      gameState = await (program.account as any).gameState.fetch(gamePDA);
       const newPhase = JSON.stringify(gameState.phase);
 
       if (newPhase.includes("assassination")) {
@@ -545,9 +544,9 @@ async function runGameSimulation() {
   }
 
   // Final state
-  gameState = await program.account.gameState.fetch(gamePDA);
+  gameState = await (program.account as any).gameState.fetch(gamePDA);
   // Final state
-  gameState = await program.account.gameState.fetch(gamePDA);
+  gameState = await (program.account as any).gameState.fetch(gamePDA);
   console.log("\n" + "=".repeat(70));
   console.log("SIMULATION COMPLETE");
   console.log("=".repeat(70));

@@ -1,5 +1,11 @@
 import * as crypto from "crypto";
-import { PlayerAssignment } from "./roleAssignment";
+
+/** Shape used for building Merkle leaves (player pubkey + role + alignment). */
+export interface PlayerAssignment {
+  playerPubkey: string;
+  role: number;
+  alignment: number;
+}
 
 /**
  * Hash a role assignment leaf (matches the on-chain hash_role_leaf function).
