@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import { Connection, PublicKey, Keypair, clusterApiUrl } from "@solana/web3.js";
 import { Program, AnchorProvider, Wallet } from "@coral-xyz/anchor";
 import { GameIndexer, GameState } from "./indexer";
-import { assignRoles, generateMerkleProof, RoleAssignment, getRoleInfo, getKnownPlayers } from "./roleAssignment";
+import { assignRoles, generateMerkleProof, RoleAssignment, getRoleInfo, getKnownPlayers, Role, Alignment } from "./roleAssignment";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -20,26 +20,78 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Solana connection
-const NETWORK = process.env.SOLANA_NETWORK || "devnet";
+// Solana connection - default to localnet
+const NETWORK = process.env.SOLANA_NETWORK || "localnet";
 const connection = new Connection(
-  process.env.SOLANA_RPC_URL || clusterApiUrl(NETWORK as any),
+  process.env.SOLANA_RPC_URL || (NETWORK === "localnet" ? "http://localhost:8899" : clusterApiUrl(NETWORK as any)),
   "confirmed"
 );
 
-// Program ID
+// Program ID - default to localnet deployment
 const PROGRAM_ID = new PublicKey(
-  process.env.PROGRAM_ID || "AvalonGame111111111111111111111111111111111"
+  process.env.PROGRAM_ID || "8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1"
 );
 
-// Setup indexer
-const indexer = new GameIndexer(connection, PROGRAM_ID);
+// Load program for account scanning
+let program: Program<any> | null = null;
+try {
+  // Try multiple possible paths for IDL
+  const possiblePaths = [
+    path.join(__dirname, "../target/idl/avalon_game.json"),
+    path.join(__dirname, "../../target/idl/avalon_game.json"),
+    path.join(process.cwd(), "target/idl/avalon_game.json"),
+    path.join(process.cwd(), "../target/idl/avalon_game.json"),
+  ];
+  
+  let idlPath: string | null = null;
+  for (const p of possiblePaths) {
+    if (fs.existsSync(p)) {
+      idlPath = p;
+      break;
+    }
+  }
+  
+  if (idlPath) {
+    const idl = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
+    // Ensure IDL address matches program ID
+    idl.address = PROGRAM_ID.toBase58();
+    // Create a minimal provider for account fetching (no signing needed)
+    const dummyWallet = {
+      publicKey: PublicKey.default,
+      signTransaction: async (tx: any) => tx,
+      signAllTransactions: async (txs: any[]) => txs,
+    };
+    const provider = new AnchorProvider(connection, dummyWallet as Wallet, { commitment: "confirmed" });
+    // Program constructor: new Program(idl, provider) - uses IDL's address field
+    // Or: new Program(idl, programId, provider) - explicitly sets program ID
+    program = new Program(idl, provider);
+    console.log(`[Server] Program loaded for account scanning from ${idlPath}`);
+  } else {
+    console.warn(`[Server] IDL file not found. Tried: ${possiblePaths.join(", ")}`);
+  }
+} catch (error) {
+  console.warn("[Server] Could not load program for account scanning:", error);
+}
+
+// Setup indexer with program instance
+const indexer = new GameIndexer(connection, PROGRAM_ID, program || undefined);
+
+// Listen for game state updates and broadcast to WebSocket clients
+indexer.on("stateUpdate", (gameState: GameState) => {
+  // Broadcast to all clients subscribed to this game
+  connectedClients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN && (client as any).gameId === gameState.gameId) {
+      client.send(JSON.stringify({ type: "stateUpdate", data: gameState }));
+    }
+  });
+});
 
 // WebSocket server for spectator view
 const wss = new WebSocketServer({ port: parseInt(process.env.WS_PORT || "8081") });
 
 // Connected clients
 const clients: Map<string, WebSocket> = new Map(); // gameId -> client
+const connectedClients: Set<WebSocket> = new Set(); // All connected clients for broadcasting
 
 /**
  * Initialize the server
@@ -85,6 +137,32 @@ function broadcastToSpectators(gameId: string, message: any) {
     }
   });
 }
+
+/**
+ * Send chat message to spectators
+ */
+app.post("/chat/:gameId", (req: Request, res: Response) => {
+  const { gameId } = req.params;
+  const { playerIndex, role, text } = req.body;
+
+  if (playerIndex === undefined || !text) {
+    return res.status(400).json({ error: "Missing playerIndex or text" });
+  }
+
+  const chatMessage = {
+    type: "chatMessage",
+    data: {
+      id: `chat-${Date.now()}-${Math.random()}`,
+      playerIndex,
+      role: role || "Unknown",
+      text,
+      timestamp: Date.now(),
+    },
+  };
+
+  broadcastToSpectators(gameId, chatMessage);
+  res.json({ success: true });
+});
 
 // API Routes
 
@@ -243,8 +321,8 @@ app.get("/god-view/:gameId", (req: Request, res: Response) => {
     phase: gameState.phase,
     players: assignment.players.map((p) => ({
       pubkey: p.player.toBase58(),
-      role: Role[p.role],
-      alignment: Alignment[p.alignment],
+      role: Role[p.role as number] || "Unknown",
+      alignment: Alignment[p.alignment as number] || "Unknown",
     })),
     quests: gameState.currentQuest,
     successfulQuests: gameState.successfulQuests,
@@ -291,10 +369,12 @@ app.get("/merkle-proof/:gameId/:playerPubkey", (req: Request, res: Response) => 
 // WebSocket handling
 wss.on("connection", (ws: WebSocket, req: any) => {
   console.log("[WebSocket] New connection");
+  connectedClients.add(ws);
 
   ws.on("message", (message: string) => {
     try {
       const data = JSON.parse(message);
+      console.log(`[WebSocket] Received message type: ${data.type}`);
       
       if (data.type === "subscribe" && data.gameId) {
         (ws as any).gameId = data.gameId;
@@ -313,6 +393,7 @@ wss.on("connection", (ws: WebSocket, req: any) => {
 
   ws.on("close", () => {
     console.log("[WebSocket] Connection closed");
+    connectedClients.delete(ws);
   });
 
   // Send welcome message

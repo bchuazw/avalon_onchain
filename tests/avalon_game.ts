@@ -5,31 +5,9 @@ import { expect } from "chai";
 import { PublicKey, Keypair, SystemProgram } from "@solana/web3.js";
 import * as crypto from "crypto";
 
-// Role enum values matching the program
-enum Role {
-  Unknown = 0,
-  Merlin = 1,
-  Percival = 2,
-  Servant = 3,
-  Morgana = 4,
-  Assassin = 5,
-  Minion = 6,
-}
-
-enum Alignment {
-  Unknown = 0,
-  Good = 1,
-  Evil = 2,
-}
-
-enum GamePhase {
-  Lobby = 0,
-  RoleAssignment = 1,
-  TeamBuilding = 2,
-  Voting = 3,
-  Quest = 4,
-  Assassination = 5,
-  Ended = 6,
+// Helper to check enum phase values (Anchor 0.30.1 returns enums as objects like { lobby: {} })
+function hasPhase(phase: any, expected: string): boolean {
+  return phase && typeof phase === "object" && expected in phase;
 }
 
 describe("avalon_game", () => {
@@ -54,14 +32,12 @@ describe("avalon_game", () => {
     // Airdrop SOL to all accounts
     const allKeypairs = [creator, ...players];
     for (const kp of allKeypairs) {
-      await provider.connection.requestAirdrop(
+      const sig = await provider.connection.requestAirdrop(
         kp.publicKey,
         2 * anchor.web3.LAMPORTS_PER_SOL
       );
+      await provider.connection.confirmTransaction(sig);
     }
-    
-    // Wait for airdrops to confirm
-    await new Promise((resolve) => setTimeout(resolve, 1000));
   });
 
   it("Initializes a game", async () => {
@@ -86,7 +62,7 @@ describe("avalon_game", () => {
     expect(gameState.gameId.toString()).to.equal(gameId.toString());
     expect(gameState.creator.toBase58()).to.equal(creator.publicKey.toBase58());
     expect(gameState.playerCount).to.equal(0);
-    expect(gameState.phase).to.equal(GamePhase.Lobby);
+    expect(hasPhase(gameState.phase, "lobby")).to.be.true;
   });
 
   it("Allows players to join", async () => {
@@ -137,7 +113,7 @@ describe("avalon_game", () => {
       .rpc();
 
     const gameState = await program.account.gameState.fetch(gamePDA);
-    expect(gameState.phase).to.equal(GamePhase.RoleAssignment);
+    expect(hasPhase(gameState.phase, "roleAssignment")).to.be.true;
     expect(gameState.vrfSeed).to.deep.equal(Array.from(vrfSeed));
     expect(gameState.rolesCommitment).to.deep.equal(Array.from(rolesCommitment));
     expect(gameState.quests[0].requiredPlayers).to.equal(2); // 5 player game, quest 1 needs 2
@@ -148,11 +124,11 @@ describe("avalon_game", () => {
     // In production, this would be done off-chain with proper role assignment
     
     const roles = [
-      { role: Role.Merlin, alignment: Alignment.Good },
-      { role: Role.Percival, alignment: Alignment.Good },
-      { role: Role.Servant, alignment: Alignment.Good },
-      { role: Role.Morgana, alignment: Alignment.Evil },
-      { role: Role.Assassin, alignment: Alignment.Evil },
+      { role: { merlin: {} }, alignment: { good: {} } },
+      { role: { percival: {} }, alignment: { good: {} } },
+      { role: { servant: {} }, alignment: { good: {} } },
+      { role: { morgana: {} }, alignment: { evil: {} } },
+      { role: { assassin: {} }, alignment: { evil: {} } },
     ];
 
     for (let i = 0; i < players.length; i++) {
@@ -201,11 +177,11 @@ describe("avalon_game", () => {
       .rpc();
 
     const gameState = await program.account.gameState.fetch(gamePDA);
-    expect(gameState.phase).to.equal(GamePhase.TeamBuilding);
+    expect(hasPhase(gameState.phase, "teamBuilding")).to.be.true;
   });
 
   it("Allows leader to propose team", async () => {
-    // First player is leader
+    // First player is leader (leader_index = 0)
     const team = [players[0].publicKey, players[1].publicKey]; // 2 players for quest 1
 
     await program.methods
@@ -218,7 +194,7 @@ describe("avalon_game", () => {
       .rpc();
 
     const gameState = await program.account.gameState.fetch(gamePDA);
-    expect(gameState.phase).to.equal(GamePhase.Voting);
+    expect(hasPhase(gameState.phase, "voting")).to.be.true;
     expect(gameState.quests[0].teamSize).to.equal(2);
   });
 
@@ -236,7 +212,7 @@ describe("avalon_game", () => {
     }
 
     const gameState = await program.account.gameState.fetch(gamePDA);
-    expect(gameState.phase).to.equal(GamePhase.Quest);
+    expect(hasPhase(gameState.phase, "quest")).to.be.true;
   });
 
   it("Allows team members to vote on quest", async () => {
@@ -262,7 +238,7 @@ describe("avalon_game", () => {
           .signers([players[i]])
           .rpc();
       } catch (e) {
-        // May fail if player role account doesn't exist
+        // May fail if player role account doesn't exist (merkle proof was invalid)
       }
     }
   });
@@ -332,6 +308,6 @@ describe("avalon_game", () => {
 
     const gameState = await program.account.gameState.fetch(newGamePDA);
     expect(gameState.playerCount).to.equal(5);
-    expect(gameState.phase).to.equal(GamePhase.RoleAssignment);
+    expect(hasPhase(gameState.phase, "roleAssignment")).to.be.true;
   });
 });

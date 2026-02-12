@@ -1,5 +1,5 @@
 import { Connection, PublicKey, ConfirmedSignatureInfo, ParsedInstruction } from "@solana/web3.js";
-import { Program, AnchorProvider, EventParser } from "@coral-xyz/anchor";
+import { Program, AnchorProvider, EventParser, BN } from "@coral-xyz/anchor";
 import { EventEmitter } from "events";
 
 // Game event types
@@ -21,6 +21,8 @@ export interface GameState {
   failedQuests: number;
   leader: string;
   winner: string | null;
+  proposedTeam?: string[];  // Team members selected for current quest
+  votes?: Record<string, boolean>;  // Voting results: player pubkey -> approve (true) / reject (false)
 }
 
 /**
@@ -31,20 +33,24 @@ export class GameIndexer extends EventEmitter {
   private programId: PublicKey;
   private lastSignature: string | null = null;
   private pollingInterval: NodeJS.Timeout | null = null;
+  private scanInterval: NodeJS.Timeout | null = null;
   private gameStates: Map<string, GameState> = new Map();
+  private program: Program<any> | null = null;
 
-  constructor(connection: Connection, programId: PublicKey) {
+  constructor(connection: Connection, programId: PublicKey, program?: Program<any>) {
     super();
     this.connection = connection;
     this.programId = programId;
+    this.program = program || null;
   }
 
   /**
-   * Start polling for game events
+   * Start polling for game events and scanning accounts
    */
-  start(pollIntervalMs: number = 2000): void {
+  start(pollIntervalMs: number = 2000, scanIntervalMs: number = 10000): void {
     console.log("[Indexer] Starting polling for game events...");
     
+    // Poll for new transactions
     this.pollingInterval = setInterval(async () => {
       try {
         await this.pollForEvents();
@@ -52,16 +58,196 @@ export class GameIndexer extends EventEmitter {
         console.error("[Indexer] Error polling events:", error);
       }
     }, pollIntervalMs);
+
+    // Periodically scan for all game accounts
+    this.scanInterval = setInterval(async () => {
+      try {
+        await this.scanGameAccounts();
+      } catch (error) {
+        console.error("[Indexer] Error scanning accounts:", error);
+      }
+    }, scanIntervalMs);
+
+    // Initial scan
+    this.scanGameAccounts();
   }
 
   /**
-   * Stop polling
+   * Stop polling and scanning
    */
   stop(): void {
     if (this.pollingInterval) {
       clearInterval(this.pollingInterval);
       this.pollingInterval = null;
-      console.log("[Indexer] Stopped polling");
+    }
+    if (this.scanInterval) {
+      clearInterval(this.scanInterval);
+      this.scanInterval = null;
+    }
+    console.log("[Indexer] Stopped polling and scanning");
+  }
+
+  /**
+   * Scan for all game state accounts
+   */
+  private async scanGameAccounts(): Promise<void> {
+    if (!this.program) {
+      console.log("[Indexer] No program instance, skipping account scan");
+      return;
+    }
+
+    try {
+      console.log("[Indexer] Scanning for game accounts...");
+      // Use type assertion to access account namespace
+      const accounts = await (this.program.account as any).gameState.all();
+      console.log(`[Indexer] Found ${accounts.length} game accounts`);
+      
+      for (const account of accounts) {
+        try {
+          const gameId = account.account.gameId.toString();
+          this.updateGameStateFromAccount(gameId, account.account);
+        } catch (error) {
+          console.error(`[Indexer] Error processing account ${account.publicKey.toBase58()}:`, error);
+        }
+      }
+    } catch (error) {
+      console.error("[Indexer] Error fetching game accounts:", error);
+    }
+  }
+
+  /**
+   * Update game state from account data
+   */
+  private updateGameStateFromAccount(gameId: string, account: any): void {
+    // Parse phase enum (Anchor returns objects like { teamBuilding: {} })
+    const phaseObj = account.phase || {};
+    let phaseStr = "Lobby";
+    if (phaseObj.lobby !== undefined) phaseStr = "Lobby";
+    else if (phaseObj.roleAssignment !== undefined) phaseStr = "RoleAssignment";
+    else if (phaseObj.teamBuilding !== undefined) phaseStr = "TeamBuilding";
+    else if (phaseObj.voting !== undefined) phaseStr = "Voting";
+    else if (phaseObj.quest !== undefined) phaseStr = "Quest";
+    else if (phaseObj.assassination !== undefined) phaseStr = "Assassination";
+    else if (phaseObj.ended !== undefined) phaseStr = "Ended";
+
+    // Extract players
+    const players: string[] = [];
+    if (account.players && Array.isArray(account.players)) {
+      for (const p of account.players) {
+        if (p && p.pubkey) {
+          players.push(p.pubkey.toBase58());
+        }
+      }
+    }
+
+    // Parse winner enum
+    const winnerObj = account.winner || null;
+    let winnerStr: string | null = null;
+    if (winnerObj) {
+      if (winnerObj.good !== undefined) winnerStr = "Good";
+      else if (winnerObj.evil !== undefined) winnerStr = "Evil";
+    }
+
+    // Get leader pubkey
+    let leaderPubkey = "";
+    if (account.leaderIndex !== undefined && account.players && account.players[account.leaderIndex]) {
+      const leaderPlayer = account.players[account.leaderIndex];
+      if (leaderPlayer && leaderPlayer.pubkey) {
+        leaderPubkey = leaderPlayer.pubkey.toBase58();
+      }
+    }
+
+    // Extract proposed team and votes from current quest
+    const currentQuestIdx = account.currentQuest || 0;
+    let proposedTeam: string[] | undefined = undefined;
+    let votes: Record<string, boolean> | undefined = undefined;
+
+    if (account.quests && account.quests[currentQuestIdx]) {
+      const quest = account.quests[currentQuestIdx];
+      
+      // Extract proposed team members
+      // Anchor Option<Pubkey> can be: { some: Pubkey } or null/undefined
+      if (quest.proposedTeam && Array.isArray(quest.proposedTeam)) {
+        proposedTeam = [];
+        for (const member of quest.proposedTeam) {
+          if (!member || member === null) continue;
+          
+          // Handle Anchor Option format: { some: Pubkey }
+          if (typeof member === 'object') {
+            if (member.some) {
+              // Option::Some(Pubkey)
+              const pubkey = member.some;
+              if (pubkey && pubkey.toBase58) {
+                proposedTeam.push(pubkey.toBase58());
+              } else if (typeof pubkey === 'string') {
+                proposedTeam.push(pubkey);
+              }
+            } else if (member.pubkey) {
+              // Direct Pubkey object
+              proposedTeam.push(member.pubkey.toBase58());
+            } else if (typeof member === 'string') {
+              // Already a string
+              proposedTeam.push(member);
+            }
+          }
+        }
+        // Filter out empty entries
+        proposedTeam = proposedTeam.filter(p => p && p.length > 0);
+        if (proposedTeam.length === 0) proposedTeam = undefined;
+      }
+
+      // Extract votes
+      // Anchor Option<bool> can be: { some: bool } or null/undefined
+      if (quest.votes && Array.isArray(quest.votes) && account.players && Array.isArray(account.players)) {
+        votes = {};
+        for (let i = 0; i < quest.votes.length && i < account.players.length; i++) {
+          const voteOption = quest.votes[i];
+          const player = account.players[i];
+          
+          if (!player || !player.pubkey) continue;
+          
+          // Handle Anchor Option format: { some: bool } or null/undefined
+          let voteValue: boolean | null = null;
+          if (voteOption !== null && voteOption !== undefined) {
+            if (typeof voteOption === 'object' && voteOption.some !== undefined) {
+              voteValue = voteOption.some === true;
+            } else if (typeof voteOption === 'boolean') {
+              voteValue = voteOption;
+            }
+          }
+          
+          if (voteValue !== null) {
+            const playerPubkey = player.pubkey.toBase58();
+            votes[playerPubkey] = voteValue;
+          }
+        }
+        // Only include if there are actual votes
+        if (Object.keys(votes).length === 0) votes = undefined;
+      }
+    }
+
+    const gameState: GameState = {
+      gameId,
+      phase: phaseStr,
+      playerCount: account.playerCount || 0,
+      players,
+      currentQuest: account.currentQuest || 0,
+      successfulQuests: account.successfulQuests || 0,
+      failedQuests: account.failedQuests || 0,
+      leader: leaderPubkey,
+      winner: winnerStr,
+      proposedTeam,
+      votes,
+    };
+
+    const existing = this.gameStates.get(gameId);
+    const existingStr = existing ? JSON.stringify(existing) : "";
+    const newStr = JSON.stringify(gameState);
+    
+    if (!existing || existingStr !== newStr) {
+      console.log(`[Indexer] Updating game ${gameId}: ${phaseStr}, ${account.playerCount || 0} players`);
+      this.gameStates.set(gameId, gameState);
+      this.emit("stateUpdate", gameState);
     }
   }
 
@@ -135,25 +321,60 @@ export class GameIndexer extends EventEmitter {
 
     for (const log of logs) {
       // Parse program events from logs
-      // Format: "Program log: <event_type>: <data>"
+      // Format: "Program log: <message>" or "Program log: Game <id> created by..."
+      // Extract game ID from various log formats
+      let gameId: string | null = null;
+      
+      // Try to extract game ID from log messages
+      const gameIdMatch = log.match(/Game (\d+)/);
+      if (gameIdMatch) {
+        gameId = gameIdMatch[1];
+      }
+      
+      // Parse structured events
       const match = log.match(/Program log: (\w+): (.+)/);
       if (match) {
         const [, eventType, dataStr] = match;
         try {
           const data = JSON.parse(dataStr);
           events.push({
-            gameId: data.gameId || "unknown",
+            gameId: data.gameId || gameId || data.game_id || "unknown",
             type: eventType,
             data,
             timestamp: Date.now(),
             signature,
           });
         } catch {
-          // Non-JSON log, treat as simple message
+          // Non-JSON log, extract game ID from message
+          const msgGameIdMatch = dataStr.match(/Game (\d+)/);
+          const extractedGameId = msgGameIdMatch ? msgGameIdMatch[1] : (gameId || "unknown");
+          
           events.push({
-            gameId: "unknown",
+            gameId: extractedGameId,
             type: eventType,
             data: { message: dataStr },
+            timestamp: Date.now(),
+            signature,
+          });
+        }
+      } else {
+        // Try to extract game ID from any log mentioning a game
+        if (gameId) {
+          // Determine event type from log content
+          let eventType = "GameEvent";
+          if (log.includes("created")) eventType = "GameCreated";
+          else if (log.includes("joined")) eventType = "PlayerJoined";
+          else if (log.includes("started")) eventType = "GameStarted";
+          else if (log.includes("proposed")) eventType = "TeamProposed";
+          else if (log.includes("voted")) eventType = "VotingComplete";
+          else if (log.includes("Quest") && (log.includes("succeeded") || log.includes("failed"))) eventType = "QuestResolved";
+          else if (log.includes("assassinated") || log.includes("Assassin")) eventType = "Assassination";
+          else if (log.includes("wins") || log.includes("ended")) eventType = "GameEnded";
+          
+          events.push({
+            gameId,
+            type: eventType,
+            data: { message: log },
             timestamp: Date.now(),
             signature,
           });
@@ -181,6 +402,8 @@ export class GameIndexer extends EventEmitter {
         failedQuests: 0,
         leader: "",
         winner: null,
+        proposedTeam: undefined,
+        votes: undefined,
       });
     }
 

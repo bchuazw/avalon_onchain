@@ -211,7 +211,10 @@ export class AvalonAgent {
       { commitment: config.commitment || "confirmed" }
     );
 
-    this.program = new Program(AVALON_IDL, config.programId, provider);
+    // Create program with IDL and provider (Anchor 0.30.1 format)
+    this.program = new Program(AVALON_IDL as Idl, provider) as any;
+    // Set program ID explicitly
+    (this.program as any).programId = config.programId;
   }
 
   /**
@@ -352,7 +355,7 @@ export class AvalonAgent {
       message,
     });
 
-    this.roleInfo = response.data;
+    this.roleInfo = response.data as RoleInboxResponse;
     return this.roleInfo;
   }
 
@@ -373,11 +376,35 @@ export class AvalonAgent {
       this.program.programId
     );
 
+    // Convert Role number to enum name, then to Anchor enum format
+    const roleNames: { [key: number]: string } = {
+      0: "unknown",
+      1: "merlin",
+      2: "percival",
+      3: "servant",
+      4: "morgana",
+      5: "assassin",
+      6: "minion",
+    };
+    const roleEnum: any = {};
+    const roleKey = roleNames[this.roleInfo.role] || "unknown";
+    roleEnum[roleKey] = {};
+
+    // Convert Alignment number to enum name, then to Anchor enum format
+    const alignmentNames: { [key: number]: string } = {
+      0: "unknown",
+      1: "good",
+      2: "evil",
+    };
+    const alignmentEnum: any = {};
+    const alignmentKey = alignmentNames[this.roleInfo.alignment] || "unknown";
+    alignmentEnum[alignmentKey] = {};
+
     const tx = await this.program.methods
       .submitRoleReveal(
-        this.roleInfo.role,
-        this.roleInfo.alignment,
-        this.roleInfo.merkleProof.map((p) => Buffer.from(p))
+        roleEnum,
+        alignmentEnum,
+        this.roleInfo.merkleProof.map((p) => Array.from(Buffer.from(p)))
       )
       .accounts({
         player: this.publicKey,
@@ -497,13 +524,29 @@ export class AvalonAgent {
     return tx;
   }
 
+  /**
+   * Advance phase manually (for timeouts/debugging)
+   * Can be called by any player to advance stuck phases
+   */
+  async advancePhase(gamePDA: PublicKey): Promise<string> {
+    const tx = await this.program.methods
+      .advancePhase()
+      .accounts({
+        caller: this.publicKey,
+        gameState: gamePDA,
+      })
+      .rpc();
+
+    return tx;
+  }
+
   // ==================== Game State ====================
 
   /**
-   * Get game state
+   * Get game state from on-chain account
    */
   async getGameState(gamePDA: PublicKey): Promise<any> {
-    return await this.program.account.gameState.fetch(gamePDA);
+    return await (this.program.account as any).gameState.fetch(gamePDA);
   }
 
   /**
@@ -512,6 +555,109 @@ export class AvalonAgent {
   async getPublicGameInfo(gameId: string): Promise<any> {
     const response = await axios.get(`${this.backendUrl}/game/${gameId}`);
     return response.data;
+  }
+
+  /**
+   * Get all active games from backend
+   */
+  async getAllGames(): Promise<any[]> {
+    const response = await axios.get(`${this.backendUrl}/games`);
+    return response.data;
+  }
+
+  /**
+   * Check if I am the current leader
+   */
+  async isLeader(gamePDA: PublicKey): Promise<boolean> {
+    const gameState = await this.getGameState(gamePDA);
+    if (!gameState.players || !gameState.players[gameState.leaderIndex]) {
+      return false;
+    }
+    const leader = gameState.players[gameState.leaderIndex];
+    return leader && leader.pubkey.equals(this.publicKey);
+  }
+
+  /**
+   * Check if I am on the proposed team for current quest
+   */
+  async isOnProposedTeam(gamePDA: PublicKey): Promise<boolean> {
+    const gameState = await this.getGameState(gamePDA);
+    const currentQuest = gameState.currentQuest;
+    const quest = gameState.quests[currentQuest];
+    
+    if (!quest || !quest.proposedTeam) {
+      return false;
+    }
+
+    for (const member of quest.proposedTeam) {
+      if (member && member.equals && member.equals(this.publicKey)) {
+        return true;
+      }
+      // Handle case where member is already a PublicKey object
+      if (member && typeof member === 'object' && member.pubkey && member.pubkey.equals(this.publicKey)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Get current game phase
+   */
+  async getGamePhase(gamePDA: PublicKey): Promise<GamePhase> {
+    const gameState = await this.getGameState(gamePDA);
+    // Anchor returns phase as object like { teamBuilding: {} }
+    const phaseObj = gameState.phase || {};
+    if (phaseObj.lobby !== undefined) return GamePhase.Lobby;
+    if (phaseObj.roleAssignment !== undefined) return GamePhase.RoleAssignment;
+    if (phaseObj.teamBuilding !== undefined) return GamePhase.TeamBuilding;
+    if (phaseObj.voting !== undefined) return GamePhase.Voting;
+    if (phaseObj.quest !== undefined) return GamePhase.Quest;
+    if (phaseObj.assassination !== undefined) return GamePhase.Assassination;
+    if (phaseObj.ended !== undefined) return GamePhase.Ended;
+    return GamePhase.Lobby;
+  }
+
+  /**
+   * Get proposed team for current quest
+   */
+  async getProposedTeam(gamePDA: PublicKey): Promise<PublicKey[]> {
+    const gameState = await this.getGameState(gamePDA);
+    const currentQuest = gameState.currentQuest;
+    const quest = gameState.quests[currentQuest];
+    
+    if (!quest || !quest.proposedTeam) {
+      return [];
+    }
+
+    return quest.proposedTeam
+      .filter((member: any) => member !== null && member !== undefined)
+      .map((member: any) => {
+        // Handle both PublicKey objects and pubkey properties
+        if (member.pubkey) {
+          return new PublicKey(member.pubkey);
+        }
+        return new PublicKey(member);
+      });
+  }
+
+  /**
+   * Get all players in the game
+   */
+  async getPlayers(gamePDA: PublicKey): Promise<PublicKey[]> {
+    const gameState = await this.getGameState(gamePDA);
+    if (!gameState.players) {
+      return [];
+    }
+
+    return gameState.players
+      .filter((p: any) => p !== null && p !== undefined)
+      .map((p: any) => {
+        if (p.pubkey) {
+          return new PublicKey(p.pubkey);
+        }
+        return new PublicKey(p);
+      });
   }
 
   // ==================== Strategy Helpers ====================

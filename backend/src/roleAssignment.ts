@@ -1,6 +1,5 @@
 import { PublicKey } from "@solana/web3.js";
 import { MerkleTree } from "merkletreejs";
-import keccak256 from "keccak256";
 import crypto from "crypto";
 
 // Role definitions
@@ -80,6 +79,7 @@ function seededShuffle<T>(array: T[], seed: Buffer): T[] {
 
 /**
  * Create a leaf hash for the merkle tree
+ * Uses SHA256 to match Solana's hash function
  */
 export function createLeafHash(player: PublicKey, role: Role, alignment: Alignment, vrfSeed: Buffer): Buffer {
   const data = Buffer.concat([
@@ -88,7 +88,7 @@ export function createLeafHash(player: PublicKey, role: Role, alignment: Alignme
     Buffer.from([alignment]),
     vrfSeed,
   ]);
-  return keccak256(data);
+  return crypto.createHash("sha256").update(data).digest();
 }
 
 /**
@@ -121,12 +121,15 @@ export function assignRoles(
     index,
   }));
   
-  // Create merkle tree
+  // Create merkle tree using SHA256 to match Solana's hash function
+  // Solana uses SHA256 and sorts pairs lexicographically (smaller first)
+  const hashFn = (data: Buffer) => crypto.createHash("sha256").update(data).digest();
   const leaves = playerRoles.map((pr) =>
     createLeafHash(pr.player, pr.role, pr.alignment, vrfSeed)
   );
   
-  const tree = new MerkleTree(leaves, keccak256, { sortPairs: true });
+  // sortPairs: true ensures pairs are sorted (smaller hash first), matching Rust logic
+  const tree = new MerkleTree(leaves, hashFn, { sortPairs: true });
   const merkleRoot = tree.getRoot();
   
   return {

@@ -3,10 +3,10 @@ seeds = false
 skip-lint = false
 
 [programs.localnet]
-avalon_game = "AvalonGame111111111111111111111111111111111"
+avalon_game = "8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1"
 
 [programs.devnet]
-avalon_game = "AvalonGame111111111111111111111111111111111"
+avalon_game = "AWemmHXA1oSqw94LNWXfN6NayNzCz4qiL1c9b6UYgDcf"
 
 [registry]
 url = "https://api.apr.dev"
@@ -16,7 +16,7 @@ cluster = "localnet"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
-test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/*.ts"
 
 [toolchain]
 anchor_version = "0.30.1"

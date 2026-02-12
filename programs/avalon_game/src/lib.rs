@@ -1,11 +1,11 @@
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::hash::hash;
 
-// Program ID - will be updated after deployment
-declare_id!("AvalonGame111111111111111111111111111111111");
+// Program ID - deployed to localnet
+declare_id!("8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1");
 
 /// Maximum players in a game
-pub const MAX_PLAYERS: usize = 10;
+pub const MAX_PLAYERS: usize = 8;
 /// Minimum players to start
 pub const MIN_PLAYERS: usize = 5;
 /// Number of quests in a game
@@ -24,8 +24,9 @@ pub enum GamePhase {
 }
 
 /// Player roles
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Default)]
 pub enum Role {
+    #[default]
     Unknown,     // Not yet revealed
     Merlin,      // Good, knows evil
     Percival,    // Good, sees Merlin/Morgana
@@ -36,8 +37,9 @@ pub enum Role {
 }
 
 /// Team alignment
-#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(AnchorSerialize, AnchorDeserialize, Clone, Copy, Debug, PartialEq, Default)]
 pub enum Alignment {
+    #[default]
     Unknown,
     Good,
     Evil,
@@ -500,7 +502,7 @@ pub struct CreateGame<'info> {
         seeds = [b"game", game_id.to_le_bytes().as_ref()],
         bump
     )]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     
     pub system_program: Program<'info, System>,
 }
@@ -511,7 +513,7 @@ pub struct JoinGame<'info> {
     pub player: Signer<'info>,
     
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     
     pub system_program: Program<'info, System>,
 }
@@ -522,7 +524,7 @@ pub struct StartGame<'info> {
     pub creator: Signer<'info>,
     
     #[account(mut, has_one = creator)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[derive(Accounts)]
@@ -532,7 +534,7 @@ pub struct SubmitRoleReveal<'info> {
     pub player: Signer<'info>,
     
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     
     #[account(
         init,
@@ -541,7 +543,7 @@ pub struct SubmitRoleReveal<'info> {
         seeds = [b"player_role", game_state.key().as_ref(), player.key().as_ref()],
         bump
     )]
-    pub player_role: Account<'info, PlayerRole>,
+    pub player_role: Box<Account<'info, PlayerRole>>,
     
     pub system_program: Program<'info, System>,
 }
@@ -552,7 +554,7 @@ pub struct ProposeTeam<'info> {
     pub player: Signer<'info>,
     
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[derive(Accounts)]
@@ -561,7 +563,7 @@ pub struct VoteTeam<'info> {
     pub player: Signer<'info>,
     
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[derive(Accounts)]
@@ -570,13 +572,13 @@ pub struct SubmitQuestVote<'info> {
     pub player: Signer<'info>,
     
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
     
     #[account(
         seeds = [b"player_role", game_state.key().as_ref(), player.key().as_ref()],
         bump = player_role.bump,
     )]
-    pub player_role: Account<'info, PlayerRole>,
+    pub player_role: Box<Account<'info, PlayerRole>>,
 }
 
 #[derive(Accounts)]
@@ -585,7 +587,7 @@ pub struct AssassinGuess<'info> {
     pub assassin: Signer<'info>,
     
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 #[derive(Accounts)]
@@ -594,7 +596,7 @@ pub struct AdvancePhase<'info> {
     pub caller: Signer<'info>,
     
     #[account(mut)]
-    pub game_state: Account<'info, GameState>,
+    pub game_state: Box<Account<'info, GameState>>,
 }
 
 // Error codes
@@ -640,8 +642,6 @@ fn setup_quests(game: &mut GameState) -> Result<()> {
         6 => ([2u8, 3, 4, 3, 4], [1u8, 1, 1, 1, 1]),
         7 => ([2u8, 3, 3, 4, 4], [1u8, 1, 1, 2, 1]),
         8 => ([3u8, 4, 4, 5, 5], [1u8, 1, 1, 2, 1]),
-        9 => ([3u8, 4, 4, 5, 5], [1u8, 1, 1, 2, 1]),
-        10 => ([3u8, 4, 4, 5, 5], [1u8, 1, 1, 2, 1]),
         _ => return Err(AvalonError::NotEnoughPlayers.into()),
     };
     
@@ -714,7 +714,7 @@ fn determine_known_players(
     game: &GameState,
     player_idx: usize,
     role: Role,
-    alignment: Alignment,
+    _alignment: Alignment,
 ) -> [Option<Pubkey>; MAX_PLAYERS] {
     let mut known = [None; MAX_PLAYERS];
     let mut known_count = 0;
