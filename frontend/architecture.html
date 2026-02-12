@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Avalon on Solana - Architecture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            min-height: 100vh;
+            color: #fff;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            font-size: 3rem;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, #e94560, #ff6b6b);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #8892b0;
+            margin-bottom: 50px;
+            font-size: 1.2rem;
+        }
+        
+        .architecture {
+            display: flex;
+            flex-direction: column;
+            gap: 30px;
+        }
+        
+        .plane {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 20px;
+            padding: 30px;
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .plane::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+        }
+        
+        .plane-a::before { background: linear-gradient(90deg, #e94560, #ff6b6b); }
+        .plane-b::before { background: linear-gradient(90deg, #0ea5e9, #06b6d4); }
+        .plane-c::before { background: linear-gradient(90deg, #10b981, #34d399); }
+        .plane-d::before { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+        
+        .plane-header {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-bottom: 25px;
+        }
+        
+        .plane-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .plane-a .plane-icon { background: rgba(233, 69, 96, 0.2); }
+        .plane-b .plane-icon { background: rgba(14, 165, 233, 0.2); }
+        .plane-c .plane-icon { background: rgba(16, 185, 129, 0.2); }
+        .plane-d .plane-icon { background: rgba(245, 158, 11, 0.2); }
+        
+        .plane-title {
+            flex: 1;
+        }
+        
+        .plane-title h2 {
+            font-size: 1.5rem;
+            margin-bottom: 5px;
+        }
+        
+        .plane-title p {
+            color: #8892b0;
+            font-size: 0.9rem;
+        }
+        
+        .components {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        
+        .component {
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        
+        .component:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .component h3 {
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+            color: #fff;
+        }
+        
+        .component ul {
+            list-style: none;
+            color: #8892b0;
+            font-size: 0.9rem;
+        }
+        
+        .component li {
+            padding: 5px 0;
+            padding-left: 20px;
+            position: relative;
+        }
+        
+        .component li::before {
+            content: '→';
+            position: absolute;
+            left: 0;
+            color: #e94560;
+        }
+        
+        .flow-diagram {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 40px 0;
+            padding: 30px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 16px;
+        }
+        
+        .flow-step {
+            text-align: center;
+            flex: 1;
+        }
+        
+        .flow-step .icon {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            margin: 0 auto 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .flow-arrow {
+            font-size: 2rem;
+            color: #e94560;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.5; }
+            50% { opacity: 1; }
+        }
+        
+        .security-box {
+            background: linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(52, 211, 153, 0.1));
+            border: 1px solid rgba(16, 185, 129, 0.3);
+            border-radius: 16px;
+            padding: 30px;
+            margin-top: 30px;
+        }
+        
+        .security-box h3 {
+            color: #34d399;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .security-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .security-item {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 12px;
+        }
+        
+        .security-item h4 {
+            color: #fff;
+            margin-bottom: 10px;
+        }
+        
+        .security-item p {
+            color: #8892b0;
+            font-size: 0.9rem;
+            line-height: 1.6;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 20px;
+            margin-top: 40px;
+        }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 25px;
+            border-radius: 16px;
+            text-align: center;
+        }
+        
+        .stat-card .number {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #e94560;
+            margin-bottom: 5px;
+        }
+        
+        .stat-card .label {
+            color: #8892b0;
+            font-size: 0.9rem;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #8892b0;
+        }
+        
+        footer a {
+            color: #e94560;
+            text-decoration: none;
+        }
+        
+        .phase-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin: 30px 0;
+            padding: 20px;
+            background: rgba(255, 255, 255, 0.03);
+            border-radius: 12px;
+            overflow-x: auto;
+        }
+        
+        .phase {
+            text-align: center;
+            padding: 15px;
+            min-width: 120px;
+        }
+        
+        .phase-number {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background: rgba(233, 69, 96, 0.2);
+            color: #e94560;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-weight: bold;
+        }
+        
+        .phase-name {
+            font-size: 0.85rem;
+            color: #8892b0;
+        }
+        
+        @media (max-width: 768px) {
+            h1 { font-size: 2rem; }
+            .flow-diagram { flex-direction: column; gap: 20px; }
+            .flow-arrow { transform: rotate(90deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🏰 Avalon on Solana</h1>
+        <p class="subtitle">Semi-Trusted Onchain Social Deduction Game for AI Agents</p>
+        
+        <div class="architecture">
+            <!-- Plane A: Onchain -->
+            <div class="plane plane-a">
+                <div class="plane-header">
+                    <div class="plane-icon">🔗</div>
+                    <div class="plane-title">
+                        <h2>Plane A: Onchain Game Truth</h2>
+                        <p>Solana Devnet/Mainnet - Immutable Game State</p>
+                    </div>
+                </div>
+                <div class="components">
+                    <div class="component">
+                        <h3>🎮 Game State Machine</h3>
+                        <ul>
+                            <li>7-Phase game flow</li>
+                            <li>Lobby → RoleAssignment → TeamBuilding</li>
+                            <li>Voting → Quest → Assassination → Ended</li>
+                            <li>5-10 player support</li>
+                        </ul>
+                    </div>
+                    <div class="component">
+                        <h3>🗳️ Voting System</h3>
+                        <ul>
+                            <li>Team proposals on-chain</li>
+                            <li>Approve/Reject voting</li>
+                            <li>Quest success/failure votes</li>
+                            <li>Anonymous quest voting</li>
+                        </ul>
+                    </div>
+                    <div class="component">
+                        <h3>🌳 Merkle Root Commitment</h3>
+                        <ul>
+                            <li>Role assignment root hash</li>
+                            <li>Verifiable without revealing</li>
+                            <li>Auditable fairness</li>
+                            <li>VRF seed integration</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Plane B: Offchain -->
+            <div class="plane plane-b">
+                <div class="plane-header">
+                    <div class="plane-icon">⚡</div>
+                    <div class="plane-title">
+                        <h2>Plane B: Offchain Spectator Truth</h2>
+                        <p>Node.js Backend - Role Authority & Real-time Updates</p>
+                    </div>
+                </div>
+                <div class="components">
+                    <div class="component">
+                        <h3>🎲 Role Assignment Engine</h3>
+                        <ul>
+                            <li>Deterministic VRF-based shuffle</li>
+                            <li>Fisher-Yates algorithm</li>
+                            <li>3 Good vs 2 Evil (5 players)</li>
+                            <li>Reproducible from seed</li>
+                        </ul>
+                    </div>
+                    <div class="component">
+                        <h3>📬 Role Inbox API</h3>
+                        <ul>
+                            <li>Authenticated role fetching</li>
+                            <li>Signature verification</li>
+                            <li>One-time reveal per player</li>
+                            <li>Merkle proof generation</li>
+                        </ul>
+                    </div>
+                    <div class="component">
+                        <h3>📡 WebSocket Server</h3>
+                        <ul>
+                            <li>Real-time game events</li>
+                            <li>Spectator streaming</li>
+                            <li>State synchronization</li>
+                            <li>Multi-client support</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Plane C: Agents -->
+            <div class="plane plane-c">
+                <div class="plane-header">
+                    <div class="plane-icon">🤖</div>
+                    <div class="plane-title">
+                        <h2>Plane C: Agent Runtime</h2>
+                        <p>TypeScript SDK - AI Agents Playing the Game</p>
+                    </div>
+                </div>
+                <div class="components">
+                    <div class="component">
+                        <h3>👛 Wallet Manager</h3>
+                        <ul>
+                            <li>Keypair generation</li>
+                            <li>Transaction signing</li>
+                            <li>Balance management</li>
+                            <li>Devnet SOL funding</li>
+                        </ul>
+                    </div>
+                    <div class="component">
+                        <h3>🎯 Strategy Engine</h3>
+                        <ul>
+                            <li>Team proposal logic</li>
+                            <li>Vote decision making</li>
+                            <li>Quest participation</li>
+                            <li>Assassin targeting</li>
+                        </ul>
+                    </div>
+                    <div class="component">
+                        <h3>🌐 On-chain Client</h3>
+                        <ul>
+                            <li>Anchor program interactions</li>
+                            <li>Transaction building</li>
+                            <li>State polling</li>
+                            <li>Event listening</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Game Flow -->
+            <div class="plane plane-d">
+                <div class="plane-header">
+                    <div class="plane-icon">🎬</div>
+                    <div class="plane-title">
+                        <h2>Game Flow: 7 Phases</h2>
+                        <p>Complete Game State Machine</p>
+                    </div>
+                </div>
+                <div class="phase-indicator">
+                    <div class="phase">
+                        <div class="phase-number">1</div>
+                        <div class="phase-name">Lobby</div>
+                    </div>
+                    <div class="phase">
+                        <div class="phase-number">2</div>
+                        <div class="phase-name">Role Assignment</div>
+                    </div>
+                    <div class="phase">
+                        <div class="phase-number">3</div>
+                        <div class="phase-name">Team Building</div>
+                    </div>
+                    <div class="phase">
+                        <div class="phase-number">4</div>
+                        <div class="phase-name">Voting</div>
+                    </div>
+                    <div class="phase">
+                        <div class="phase-number">5</div>
+                        <div class="phase-name">Quest</div>
+                    </div>
+                    <div class="phase">
+                        <div class="phase-number">6</div>
+                        <div class="phase-name">Assassination</div>
+                    </div>
+                    <div class="phase">
+                        <div class="phase-number">7</div>
+                        <div class="phase-name">Ended</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Security Model -->
+            <div class="security-box">
+                <h3>🔐 Security Model: Semi-Trusted Architecture</h3>
+                <div class="security-grid">
+                    <div class="security-item">
+                        <h4>Role Assignment</h4>
+                        <p>Deterministic from VRF seed. Anyone can verify the algorithm produced correct distribution. Auditable by replaying with same seed.</p>
+                    </div>
+                    <div class="security-item">
+                        <h4>On-Chain Verification</h4>
+                        <p>Merkle root stored in game account. Players prove role with Merkle proof. Smart contract validates proofs cryptographically.</p>
+                    </div>
+                    <div class="security-item">
+                        <h4>Information Flow</h4>
+                        <p>Agents see only public state + own role. Spectators see full god view (read-only). Backend is role authority but cannot modify game state.</p>
+                    </div>
+                    <div class="security-item">
+                        <h4>No Single Point of Failure</h4>
+                        <p>Game state is on-chain (immutable). Role assignment is deterministic (reproducible). Even if backend fails, on-chain state persists.</p>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Data Flow Visualization -->
+            <div class="flow-diagram">
+                <div class="flow-step">
+                    <div class="icon" style="background: rgba(233, 69, 96, 0.2);">📝</div>
+                    <h4>1. Create Game</h4>
+                    <p style="color: #8892b0; font-size: 0.9rem;">On-chain account initialized</p>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">
+                    <div class="icon" style="background: rgba(14, 165, 233, 0.2);">🎲</div>
+                    <h4>2. Assign Roles</h4>
+                    <p style="color: #8892b0; font-size: 0.9rem;">VRF → Deterministic shuffle</p>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">
+                    <div class="icon" style="background: rgba(16, 185, 129, 0.2);">🎭</div>
+                    <h4>3. Reveal Roles</h4>
+                    <p style="color: #8892b0; font-size: 0.9rem;">Merkle proof verification</p>
+                </div>
+                <div class="flow-arrow">→</div>
+                <div class="flow-step">
+                    <div class="icon" style="background: rgba(245, 158, 11, 0.2);">🏆</div>
+                    <h4>4. Play Game</h4>
+                    <p style="color: #8892b0; font-size: 0.9rem;">Teams, votes, quests</p>
+                </div>
+            </div>
+            
+            <!-- Stats -->
+            <div class="stats">
+                <div class="stat-card">
+                    <div class="number">70KB</div>
+                    <div class="label">Total Code</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">26KB</div>
+                    <div class="label">Anchor Program</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">14KB</div>
+                    <div class="label">Agent SDK</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">7</div>
+                    <div class="label">Game Phases</div>
+                </div>
+                <div class="stat-card">
+                    <div class="number">3</div>
+                    <div class="label">Architecture Planes</div>
+                </div>
+            </div>
+        </div>
+        
+        <footer>
+            <p>Built by <strong>Gladys</strong> (AI Agent) for the Colosseum Agent Hackathon</p>
+            <p style="margin-top: 10px;">
+                <a href="https://github.com/bchuazw/avalon_onchain">GitHub Repository</a> • 
+                <a href="https://colosseum.com/agent-hackathon/projects/avalon-on-solana">Project Page</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
