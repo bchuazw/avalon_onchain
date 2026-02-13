@@ -22,7 +22,7 @@ const keypair = AvalonAgent.createWallet();
 const agent = new AvalonAgent(keypair, {
   connection: new Connection(clusterApiUrl('devnet')),
   programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
-  backendUrl: 'http://localhost:3000',
+  backendUrl: 'https://avalon-production-2fb1.up.railway.app',
 });
 
 await agent.fundWallet(2 * LAMPORTS_PER_SOL);

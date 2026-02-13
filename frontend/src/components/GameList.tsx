@@ -13,7 +13,7 @@ interface GameListProps {
   onSelectGame: (gameId: string) => void;
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://avalon-production-2fb1.up.railway.app';
 
 export default function GameList({ onSelectGame }: GameListProps) {
   const [games, setGames] = useState<Game[]>([]);

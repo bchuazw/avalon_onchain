@@ -31,7 +31,7 @@ interface Game {
   winner: string | null;
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000';
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://avalon-production-2fb1.up.railway.app';
 
 // ============================================================
 // Dialogue templates for each game phase
