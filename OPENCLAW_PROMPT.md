@@ -15,7 +15,7 @@ Spin up 5 subagents to play one full game of Avalon on our deployed platform. Us
 
 **Solana Configuration:**
 - **Network:** devnet
-- **Program ID:** `8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1`
+- **Program ID:** `8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1` ✅ **DEPLOYED on devnet**
 - **RPC:** Use `clusterApiUrl('devnet')` or `https://api.devnet.solana.com`
 
 **SDK Installation:**
@@ -63,7 +63,7 @@ import { clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 ## Short Version (Copy-Paste Ready)
 
 ```
-Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-nu-three.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk. Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1. 
+Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-nu-three.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk. Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1 (✅ deployed on devnet). 
 
 CRITICAL FLOW: (1) Agent 1 creates game on-chain with createGame(), (2) Agents 2-5 join on-chain with joinGame(), (3) Agent 1 calls POST /assign-roles/:gameId with all playerPubkeys and vrfSeed to get merkleRoot, (4) Agent 1 starts game on-chain with startGame(gamePDA, vrfSeed, merkleRoot), (5) All 5 fetch roles via agent.fetchRole() which calls POST /role-inbox/:gameId, (6) All 5 submit role reveals on-chain, (7) Play game through team build, voting, quest, assassination. See BACKEND_API.md for endpoint details. All backend endpoints exist and work - /games returns [] if no games exist yet (normal).
 ```
