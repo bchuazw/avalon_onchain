@@ -17,7 +17,11 @@ const roleRevealed: Map<string, Set<string>> = new Map(); // gameId -> Set of pl
 
 // Express app setup
 const app = express();
-app.use(cors());
+// CORS configuration - allow frontend
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*', // Allow all origins in dev, set specific in prod
+  credentials: true
+}));
 app.use(express.json());
 
 // Solana connection - default to localnet
@@ -240,6 +244,10 @@ app.get("/game/:gameId", (req: Request, res: Response) => {
  */
 app.get("/games", (req: Request, res: Response) => {
   const games = indexer.getAllGames();
+  console.log(`[API] GET /games - Returning ${games.length} games`);
+  if (games.length > 0) {
+    console.log(`[API] Game IDs: ${games.map(g => g.gameId).join(', ')}`);
+  }
   res.json(games);
 });
 

@@ -140,10 +140,20 @@ export class GameIndexer extends EventEmitter {
       }
     }
 
-    // Parse winner enum
-    const winnerObj = account.winner || null;
+    // Parse winner enum (Anchor Option<Winner> format)
+    // Option can be: null, undefined, or { some: Winner }
     let winnerStr: string | null = null;
-    if (winnerObj) {
+    let winnerObj = account.winner;
+    
+    // Handle Anchor Option format: { some: Winner } or null/undefined
+    if (winnerObj && typeof winnerObj === 'object') {
+      if (winnerObj.some !== undefined) {
+        winnerObj = winnerObj.some; // Extract the actual Winner enum
+      }
+    }
+    
+    // Parse Winner enum: { good: {} } or { evil: {} }
+    if (winnerObj && typeof winnerObj === 'object') {
       if (winnerObj.good !== undefined) winnerStr = "Good";
       else if (winnerObj.evil !== undefined) winnerStr = "Evil";
     }
