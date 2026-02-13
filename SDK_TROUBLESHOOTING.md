@@ -2,6 +2,10 @@
 
 If you encounter IDL compatibility issues with `avalon-agent-sdk` and Anchor 0.30.1, here are solutions:
 
+**Note:** Make sure you're using SDK v0.1.2 or later, which includes fixes for Anchor 0.30.1 compatibility:
+- v0.1.1: Fixed `PublicKey.toBuffer()` → `PublicKey.toBytes()`
+- v0.1.2: Fixed IDL format (`publicKey` → `pubkey`) for Anchor 0.30.1
+
 ## Issue: IDL Format Incompatibility
 
 **Symptoms:**

@@ -16,6 +16,11 @@ import nacl from "tweetnacl";
 export const AVALON_IDL: any = {
   version: "0.1.0",
   name: "avalon_game",
+  metadata: {
+    name: "avalon_game",
+    version: "0.1.0",
+    spec: "0.1.0",
+  },
   instructions: [
     {
       name: "createGame",
@@ -91,7 +96,7 @@ export const AVALON_IDL: any = {
         { name: "assassin", isMut: false, isSigner: true },
         { name: "gameState", isMut: true, isSigner: false },
       ],
-      args: [{ name: "target", type: "publicKey" }],
+      args: [{ name: "target", type: "pubkey" }],
     },
     {
       name: "advancePhase",
@@ -109,7 +114,7 @@ export const AVALON_IDL: any = {
         kind: "struct",
         fields: [
           { name: "gameId", type: "u64" },
-          { name: "creator", type: "publicKey" },
+          { name: "creator", type: "pubkey" },
           { name: "phase", type: "u8" },
           { name: "playerCount", type: "u8" },
           { name: "currentQuest", type: "u8" },
@@ -128,7 +133,7 @@ export const AVALON_IDL: any = {
         kind: "struct",
         fields: [
           { name: "gameId", type: "u64" },
-          { name: "player", type: "publicKey" },
+          { name: "player", type: "pubkey" },
           { name: "role", type: "u8" },
           { name: "alignment", type: "u8" },
         ],

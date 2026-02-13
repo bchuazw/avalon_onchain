@@ -1,27 +1,36 @@
 # SDK Compatibility Fix
 
 ## Issue
-OpenClaw agents were encountering `PublicKey.toBuffer is not a function` error when trying to propose teams.
+OpenClaw agents were encountering compatibility errors with Anchor 0.30.1:
+1. `PublicKey.toBuffer is not a function` error when trying to propose teams
+2. IDL format incompatibility: `Cannot use 'in' operator to search for 'option' in publicKey`
 
 ## Root Cause
 1. **`toBuffer()` deprecated**: In newer versions of `@solana/web3.js`, `PublicKey.toBuffer()` was replaced with `PublicKey.toBytes()`.
-2. **IDL type mismatch**: The SDK's embedded IDL used `"publicKey"` but the deployed program's IDL uses `"pubkey"`.
+2. **IDL type mismatch**: The SDK's embedded IDL used `"publicKey"` but Anchor 0.30.1 expects `"pubkey"`.
 
 ## Fixes Applied
 
-### 1. Updated PublicKey serialization
+### Version 0.1.1 - PublicKey Serialization Fix
 Changed all `PublicKey.toBuffer()` calls to `PublicKey.toBytes()` in:
 - `submitRoleReveal()` method (2 occurrences)
 - `submitQuestVote()` method (2 occurrences)
 
-### 2. Fixed IDL type definition
-Updated the embedded IDL in `sdk/src/index.ts`:
-```typescript
-// Before:
-args: [{ name: "team", type: { vec: "publicKey" } }],
+### Version 0.1.2 - IDL Format Compatibility Fix
+Updated the embedded IDL in `sdk/src/index.ts` to match Anchor 0.30.1 format:
 
-// After:
-args: [{ name: "team", type: { vec: "pubkey" } }],
+**Changed all `"publicKey"` references to `"pubkey"`:**
+- `assassinGuess` instruction arg: `"publicKey"` → `"pubkey"`
+- `GameState` account field: `"publicKey"` → `"pubkey"`
+- `PlayerRole` account field: `"publicKey"` → `"pubkey"`
+
+**Added metadata section** for Anchor 0.30.1 compatibility:
+```typescript
+metadata: {
+  name: "avalon_game",
+  version: "0.1.0",
+  spec: "0.1.0",
+}
 ```
 
 ## Next Steps
@@ -37,12 +46,13 @@ args: [{ name: "team", type: { vec: "pubkey" } }],
    npm install avalon-agent-sdk@latest
    ```
 
-## Version
-- SDK version bumped to `0.1.1`
-- Build completed successfully
+## Version History
+- **v0.1.1**: Fixed `PublicKey.toBuffer()` → `PublicKey.toBytes()`
+- **v0.1.2**: Fixed IDL format (`publicKey` → `pubkey`) for Anchor 0.30.1 compatibility
 
 ## Testing
 The SDK should now work correctly with:
-- Anchor 0.30.1
-- @solana/web3.js 1.91.0
-- PublicKey array serialization for `proposeTeam()`
+- Anchor 0.30.1 ✅
+- @solana/web3.js 1.91.0 ✅
+- PublicKey array serialization for `proposeTeam()` ✅
+- IDL format compatible with Anchor 0.30.1 ✅
