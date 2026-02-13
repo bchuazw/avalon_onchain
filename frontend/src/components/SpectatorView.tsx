@@ -48,6 +48,8 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
   const [gamesLoading, setGamesLoading] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const currentGameIdRef = useRef<string | null>(null);
+  // Store chat messages per gameId so they persist when navigating away and back
+  const chatMessagesByGameRef = useRef<Map<string, ChatMessage[]>>(new Map());
   const isMobile = useIsMobile();
 
   useEffect(() => {
@@ -56,10 +58,26 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
     return () => clearInterval(interval);
   }, []);
 
-  // Reset chat when gameId changes (per-game chat sessions)
+  // Load chat messages for the current game when gameId changes (persists across navigation)
   useEffect(() => {
     if (gameId !== currentGameIdRef.current) {
-      setChatMessages([]);
+      // Save current game's messages before switching
+      const previousGameId = currentGameIdRef.current;
+      if (previousGameId) {
+        // Get current messages from state before they're cleared
+        setChatMessages((currentMessages) => {
+          if (currentMessages.length > 0) {
+            chatMessagesByGameRef.current.set(previousGameId, currentMessages);
+          }
+          // Load messages for the new game (or empty array if none exist)
+          const savedMessages = gameId ? chatMessagesByGameRef.current.get(gameId) || [] : [];
+          return savedMessages;
+        });
+      } else {
+        // No previous game, just load messages for the new game
+        const savedMessages = gameId ? chatMessagesByGameRef.current.get(gameId) || [] : [];
+        setChatMessages(savedMessages);
+      }
       currentGameIdRef.current = gameId;
     }
   }, [gameId]);
@@ -134,7 +152,14 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
           text: data.data.text,
           timestamp: data.data.timestamp,
         };
-        setChatMessages((prev) => [...prev.slice(-20), chatMsg]);
+        setChatMessages((prev) => {
+          const updated = [...prev.slice(-20), chatMsg];
+          // Persist messages for this game
+          if (id) {
+            chatMessagesByGameRef.current.set(id, updated);
+          }
+          return updated;
+        });
       }
     };
 
