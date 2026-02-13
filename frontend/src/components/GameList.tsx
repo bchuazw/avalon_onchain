@@ -22,8 +22,71 @@ export default function GameList({ onSelectGame }: GameListProps) {
 
   useEffect(() => {
     fetchGames();
-    const interval = setInterval(fetchGames, 5000); // Refresh every 5 seconds
-    return () => clearInterval(interval);
+    
+    // Poll every 3 seconds (matches backend scan interval)
+    const interval = setInterval(fetchGames, 3000);
+    
+    // Connect to WebSocket for real-time game list updates
+    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws';
+    const websocket = new WebSocket(wsUrl);
+    
+    websocket.onopen = () => {
+      console.log('[GameList] WebSocket connected');
+    };
+    
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'newGame') {
+        console.log('[GameList] New game received via WebSocket:', data.data.gameId);
+        // Add new game to list immediately
+        setGames((prevGames) => {
+          // Check if game already exists
+          const exists = prevGames.some(g => g.gameId === data.data.gameId);
+          if (exists) return prevGames;
+          
+          // Add new game
+          const newGame: Game = {
+            gameId: data.data.gameId,
+            phase: data.data.phase,
+            playerCount: data.data.playerCount,
+            successfulQuests: data.data.successfulQuests,
+            failedQuests: data.data.failedQuests,
+            winner: data.data.winner,
+          };
+          return [...prevGames, newGame];
+        });
+      } else if (data.type === 'stateUpdate') {
+        // Update existing game when state changes
+        setGames((prevGames) => {
+          return prevGames.map(game => {
+            if (game.gameId === data.data.gameId) {
+              return {
+                ...game,
+                phase: data.data.phase,
+                playerCount: data.data.playerCount,
+                successfulQuests: data.data.successfulQuests,
+                failedQuests: data.data.failedQuests,
+                winner: data.data.winner,
+              };
+            }
+            return game;
+          });
+        });
+      }
+    };
+    
+    websocket.onerror = (error) => {
+      console.warn('[GameList] WebSocket error:', error);
+    };
+    
+    websocket.onclose = () => {
+      console.log('[GameList] WebSocket closed');
+    };
+    
+    return () => {
+      clearInterval(interval);
+      websocket.close();
+    };
   }, []);
 
   const fetchGames = async () => {

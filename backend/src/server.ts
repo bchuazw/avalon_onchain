@@ -102,6 +102,16 @@ async function main() {
     });
   });
 
+  // Listen for new game creation and broadcast to all clients
+  indexer.on("newGame", (gameState: GameState) => {
+    console.log(`[Server] New game created: ${gameState.gameId}`);
+    // Broadcast to all connected clients (not just spectators of this game)
+    broadcastToAllClients({
+      type: "newGame",
+      data: gameState,
+    });
+  });
+
   // Listen for vote chat messages and broadcast them
   indexer.on("voteChat", (voteData: any) => {
     const chatMessage = {
@@ -221,6 +231,20 @@ function broadcastToSpectators(gameId: string, message: any) {
   wss.clients.forEach((client) => {
     const clientGameId = (client as any).gameId;
     if (clientGameId === gameId && client.readyState === WebSocket.OPEN) {
+      client.send(payload);
+    }
+  });
+}
+
+/**
+ * Broadcast message to all connected WebSocket clients (for game list updates)
+ */
+function broadcastToAllClients(message: any) {
+  if (!wss) return;
+  const payload = JSON.stringify(message);
+  
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
       client.send(payload);
     }
   });

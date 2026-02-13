@@ -47,7 +47,7 @@ export class GameIndexer extends EventEmitter {
   /**
    * Start polling for game events and scanning accounts
    */
-  start(pollIntervalMs: number = 2000, scanIntervalMs: number = 10000): void {
+  start(pollIntervalMs: number = 2000, scanIntervalMs: number = 3000): void {
     console.log("[Indexer] Starting polling for game events...");
     
     // Poll for new transactions
@@ -128,7 +128,15 @@ export class GameIndexer extends EventEmitter {
     else if (phaseObj.voting !== undefined) phaseStr = "Voting";
     else if (phaseObj.quest !== undefined) phaseStr = "Quest";
     else if (phaseObj.assassination !== undefined) phaseStr = "Assassination";
-    else if (phaseObj.ended !== undefined) phaseStr = "Ended";
+    else if (phaseObj.ended !== undefined) {
+      phaseStr = "Ended";
+      console.log(`[Indexer] Game ${gameId} has ENDED phase detected`);
+    }
+    
+    // Debug: Log phase detection for ended games
+    if (phaseStr === "Ended") {
+      console.log(`[Indexer] Game ${gameId} phase object:`, JSON.stringify(phaseObj));
+    }
 
     // Extract players
     const players: string[] = [];
@@ -251,11 +259,24 @@ export class GameIndexer extends EventEmitter {
     };
 
     const existing = this.gameStates.get(gameId);
+    const isNewGame = !existing;
     const existingStr = existing ? JSON.stringify(existing) : "";
     const newStr = JSON.stringify(gameState);
     
     if (!existing || existingStr !== newStr) {
-      console.log(`[Indexer] Updating game ${gameId}: ${phaseStr}, ${account.playerCount || 0} players`);
+      const phaseChanged = existing && existing.phase !== phaseStr;
+      console.log(`[Indexer] Updating game ${gameId}: ${phaseStr}, ${account.playerCount || 0} players, ${account.successfulQuests || 0} successes, ${account.failedQuests || 0} failures`);
+      
+      if (phaseChanged && phaseStr === "Ended") {
+        console.log(`[Indexer] ⚠️ Game ${gameId} phase changed to ENDED! Previous phase: ${existing.phase}`);
+        console.log(`[Indexer] Final state - Successes: ${account.successfulQuests || 0}, Failures: ${account.failedQuests || 0}, Winner: ${winnerStr || 'None'}`);
+      }
+      
+      // Emit event for new game creation
+      if (isNewGame) {
+        console.log(`[Indexer] New game detected: ${gameId}`);
+        this.emit("newGame", gameState);
+      }
       
       // Detect new votes and broadcast as chat messages
       if (gameState.votes && existing && existing.votes) {

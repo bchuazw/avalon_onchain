@@ -335,8 +335,27 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
             flexWrap: 'wrap',
           }}
         >
-          <span style={{ color: '#00ffff' }}>
-            {typeof gameState?.phase === 'object' ? Object.keys(gameState.phase)[0].toUpperCase() : (gameState?.phase || 'LOADING').toUpperCase()}
+          <span style={{ 
+            color: gameState?.phase === 'Ended' 
+              ? (gameState?.winner?.toLowerCase().includes('good') ? '#00ff64' : '#ff0064')
+              : '#00ffff'
+          }}>
+            {(() => {
+              // Handle phase display - prioritize ended/winner states
+              if (gameState?.phase === 'Ended' && gameState?.winner) {
+                return `${gameState.winner.toUpperCase()} WINS!`;
+              }
+              if (gameState?.phase === 'Ended') {
+                return 'GAME ENDED';
+              }
+              // Handle object phase format (fallback)
+              if (typeof gameState?.phase === 'object' && gameState?.phase !== null) {
+                const phaseKey = Object.keys(gameState.phase)[0];
+                return phaseKey ? phaseKey.toUpperCase() : 'LOADING';
+              }
+              // Handle string phase format
+              return (gameState?.phase || 'LOADING').toUpperCase();
+            })()}
           </span>
           <span style={{ color: '#00ff64' }}>✅ {gameState?.successfulQuests || 0}</span>
           <span style={{ color: '#ff0064' }}>❌ {gameState?.failedQuests || 0}</span>

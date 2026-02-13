@@ -182,14 +182,6 @@ function QuestStones({ successfulQuests, failedQuests }: { successfulQuests: num
 // Phase indicator hologram (using Html instead of Text)
 // ============================================================
 function PhaseIndicator({ phase, winner, currentQuest }: { phase: string; winner: string | null; currentQuest: number }) {
-  const ringRef = useRef<THREE.Mesh>(null);
-
-  useFrame((state) => {
-    if (ringRef.current) {
-      ringRef.current.rotation.z = state.clock.elapsedTime * 0.5;
-    }
-  });
-
   // Build detailed phase text
   let phaseText = '';
   let phaseColor = '#00ffff';
@@ -224,18 +216,6 @@ function PhaseIndicator({ phase, winner, currentQuest }: { phase: string; winner
 
   return (
     <group position={[0, 2.8, 0]}>
-      {/* Floating ring - hidden when showing winner result */}
-      {!winner && (
-        <mesh ref={ringRef} rotation={[Math.PI / 2, 0, 0]}>
-          <torusGeometry args={[0.5, 0.015, 8, 32]} />
-          <meshStandardMaterial
-            color={phaseColor}
-            emissive={phaseColor}
-            emissiveIntensity={1}
-            toneMapped={false}
-          />
-        </mesh>
-      )}
       {/* Phase text via Html */}
       <Html center distanceFactor={6} style={{ pointerEvents: 'none' }}>
         <div style={{
@@ -832,7 +812,17 @@ export default function SpectatorScene3D({ gameState, chatMessages }: SpectatorS
             Game #{gameState?.gameId || '---'}
           </div>
           <div style={{ display: 'flex', gap: 'clamp(8px, 2vw, 16px)', fontSize: 'clamp(11px, 2.5vw, 13px)', fontFamily: 'Rajdhani, sans-serif', fontWeight: 600, flexWrap: 'wrap' }}>
-            <span style={{ color: '#00ffff' }}>Quest {(gameState?.currentQuest || 0) + 1}/5</span>
+            {gameState?.phase !== 'Ended' && (
+              <span style={{ color: '#00ffff' }}>Quest {(gameState?.currentQuest || 0) + 1}/5</span>
+            )}
+            {gameState?.phase === 'Ended' && gameState?.winner && (
+              <span style={{ color: gameState.winner.toLowerCase().includes('good') ? '#00ff64' : '#ff0064' }}>
+                {gameState.winner.toUpperCase()} WINS!
+              </span>
+            )}
+            {gameState?.phase === 'Ended' && !gameState?.winner && (
+              <span style={{ color: '#ff0064' }}>GAME ENDED</span>
+            )}
             <span style={{ color: '#00ff64' }}>{gameState?.successfulQuests || 0} Won</span>
             <span style={{ color: '#ff0064' }}>{gameState?.failedQuests || 0} Lost</span>
           </div>
