@@ -13,6 +13,7 @@ dotenv.config();
 
 // In-memory storage for role assignments (in production, use Redis or database)
 const roleAssignments: Map<string, RoleAssignment> = new Map();
+const roleVrfSeeds: Map<string, Buffer> = new Map(); // gameId -> vrfSeed used for merkle tree
 const roleRevealed: Map<string, Set<string>> = new Map(); // gameId -> Set of player pubkeys
 
 // Express app setup
@@ -293,8 +294,9 @@ app.post("/assign-roles/:gameId", async (req: Request, res: Response) => {
     // Assign roles deterministically
     const assignment = assignRoles(players, seed);
     
-    // Store assignment
+    // Store assignment and vrfSeed (needed for merkle proof generation)
     roleAssignments.set(gameId, assignment);
+    roleVrfSeeds.set(gameId, seed);
     roleRevealed.set(gameId, new Set());
 
     console.log(`[Roles] Assigned roles for game ${gameId}`);
@@ -351,8 +353,12 @@ app.post("/role-inbox/:gameId", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Role already revealed" });
     }
 
-    // Generate merkle proof
-    const merkleProof = generateMerkleProof(assignment, roleInfo.index, assignment.players[0].player.toBuffer());
+    // Generate merkle proof using the stored vrfSeed
+    const vrfSeed = roleVrfSeeds.get(gameId);
+    if (!vrfSeed) {
+      return res.status(500).json({ error: "VRF seed not found for game" });
+    }
+    const merkleProof = generateMerkleProof(assignment, roleInfo.index, vrfSeed);
 
     // Mark as revealed
     revealed?.add(playerPubkey);
@@ -429,7 +435,11 @@ app.get("/merkle-proof/:gameId/:playerPubkey", (req: Request, res: Response) => 
       return res.status(404).json({ error: "Player not in game" });
     }
 
-    const vrfSeed = Buffer.alloc(32); // Get from storage in production
+    // Get stored vrfSeed for this game
+    const vrfSeed = roleVrfSeeds.get(gameId);
+    if (!vrfSeed) {
+      return res.status(500).json({ error: "VRF seed not found for game" });
+    }
     const merkleProof = generateMerkleProof(assignment, roleInfo.index, vrfSeed);
 
     res.json({
