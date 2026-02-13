@@ -31,7 +31,8 @@ interface Game {
   winner: string | null;
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://avalon-production-2fb1.up.railway.app';
+// Normalize backend URL - remove trailing slash
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'https://avalon-production-2fb1.up.railway.app').replace(/\/+$/, '');
 
 // ============================================================
 // Dialogue templates for each game phase

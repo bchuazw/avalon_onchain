@@ -13,7 +13,8 @@ interface GameListProps {
   onSelectGame: (gameId: string) => void;
 }
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'https://avalon-production-2fb1.up.railway.app';
+// Normalize backend URL - remove trailing slash
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'https://avalon-production-2fb1.up.railway.app').replace(/\/+$/, '');
 
 export default function GameList({ onSelectGame }: GameListProps) {
   const [games, setGames] = useState<Game[]>([]);
@@ -27,16 +28,27 @@ export default function GameList({ onSelectGame }: GameListProps) {
 
   const fetchGames = async () => {
     try {
+      console.log(`[GameList] Fetching games from ${BACKEND_URL}/games`);
       const response = await fetch(`${BACKEND_URL}/games`);
+      console.log(`[GameList] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
-      setGames(data);
+      console.log(`[GameList] Received ${data.length} games:`, data);
+      
+      // Filter out games with invalid gameId
+      const validGames = data.filter((game: Game) => game.gameId && game.gameId !== 'unknown');
+      console.log(`[GameList] Valid games after filtering: ${validGames.length}`, validGames);
+      
+      setGames(validGames);
     } catch (error) {
-      console.error('Failed to fetch games:', error);
-      // Use mock data if backend is not available
-      setGames([
-        { gameId: '1', phase: 'Lobby', playerCount: 3, successfulQuests: 0, failedQuests: 0, winner: null },
-        { gameId: '2', phase: 'Quest', playerCount: 5, successfulQuests: 2, failedQuests: 1, winner: null },
-      ]);
+      console.error('[GameList] Failed to fetch games:', error);
+      console.error('[GameList] Error details:', error);
+      // Don't use mock data - show empty state instead
+      setGames([]);
     } finally {
       setLoading(false);
     }
