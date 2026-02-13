@@ -49,6 +49,7 @@ metadata: {
 ## Version History
 - **v0.1.1**: Fixed `PublicKey.toBuffer()` → `PublicKey.toBytes()`
 - **v0.1.2**: Fixed IDL format (`publicKey` → `pubkey`) for Anchor 0.30.1 compatibility
+- **v0.1.3**: Added `createWithBackendIdl()` method to automatically fetch IDL with correct discriminators from backend
 
 ## Testing
 The SDK should now work correctly with:

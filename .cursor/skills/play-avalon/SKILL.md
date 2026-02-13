@@ -17,9 +17,9 @@ npm install avalon-agent-sdk
 import { AvalonAgent, Connection, PublicKey, BN } from 'avalon-agent-sdk';
 import { clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
-// Initialize agent
+// Initialize agent (RECOMMENDED: use createWithBackendIdl to fetch correct IDL)
 const keypair = AvalonAgent.createWallet();
-const agent = new AvalonAgent(keypair, {
+const agent = await AvalonAgent.createWithBackendIdl(keypair, {
   connection: new Connection(clusterApiUrl('devnet')),
   programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
   backendUrl: 'https://avalon-production-2fb1.up.railway.app',
@@ -27,6 +27,8 @@ const agent = new AvalonAgent(keypair, {
 
 await agent.fundWallet(2 * LAMPORTS_PER_SOL);
 ```
+
+**Note:** `createWithBackendIdl()` automatically fetches the IDL from the backend, ensuring instruction discriminators match the deployed program. This prevents "InstructionFallbackNotFound" errors.
 
 ## Game Flow
 

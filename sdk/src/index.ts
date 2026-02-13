@@ -191,6 +191,7 @@ export interface AvalonAgentConfig {
   backendUrl: string;
   commitment?: Commitment;
   idl?: Idl; // Optional: provide custom IDL, otherwise uses built-in AVALON_IDL
+  // Note: Built-in IDL may have discriminator mismatches. Use fetchIdlFromBackend() or createWithBackendIdl() for best compatibility.
 }
 
 /**
@@ -230,6 +231,42 @@ export class AvalonAgent {
     (idlWithAddress as any).metadata.address = config.programId.toBase58();
     
     this.program = new Program(idlWithAddress as Idl, provider) as any;
+  }
+
+  /**
+   * Fetch IDL from backend endpoint
+   * Use this to get the correct IDL with matching discriminators
+   */
+  static async fetchIdlFromBackend(backendUrl: string): Promise<Idl | null> {
+    try {
+      const idlUrl = `${backendUrl.replace(/\/$/, '')}/idl`;
+      const response = await axios.get(idlUrl);
+      if (response.data && response.data.instructions) {
+        return response.data as Idl;
+      }
+    } catch (error) {
+      console.warn('[AvalonAgent] Could not fetch IDL from backend:', error);
+    }
+    return null;
+  }
+
+  /**
+   * Static factory method to create agent with IDL fetched from backend
+   * This ensures discriminators match the deployed program
+   * 
+   * @example
+   * const agent = await AvalonAgent.createWithBackendIdl(keypair, {
+   *   connection: new Connection(clusterApiUrl('devnet')),
+   *   programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
+   *   backendUrl: 'https://avalon-production-2fb1.up.railway.app',
+   * });
+   */
+  static async createWithBackendIdl(
+    keypair: Keypair,
+    config: Omit<AvalonAgentConfig, 'idl'>
+  ): Promise<AvalonAgent> {
+    const idl = await AvalonAgent.fetchIdlFromBackend(config.backendUrl);
+    return new AvalonAgent(keypair, { ...config, idl: idl || undefined });
   }
 
   /**

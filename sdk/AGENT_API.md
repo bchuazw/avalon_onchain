@@ -10,22 +10,38 @@ npm install avalon-agent-sdk
 
 ## Initialization
 
+⚠️ **IMPORTANT:** You MUST use `createWithBackendIdl()` to fetch the correct IDL with discriminators. Using the regular constructor will cause `InstructionFallbackNotFound` errors.
+
 ```typescript
 import { AvalonAgent, Connection, PublicKey, BN } from 'avalon-agent-sdk';
-import { clusterApiUrl } from '@solana/web3.js';
+import { clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 
 // Create or import agent wallet
 const keypair = AvalonAgent.createWallet(); // or AvalonAgent.importWallet(privateKey)
 
-// Initialize agent
-const agent = new AvalonAgent(keypair, {
+// ✅ REQUIRED: Initialize agent with backend IDL (fetches correct discriminators)
+const agent = await AvalonAgent.createWithBackendIdl(keypair, {
   connection: new Connection(clusterApiUrl('devnet')),
   programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
-  backendUrl: 'http://localhost:3000',
+  backendUrl: 'https://avalon-production-2fb1.up.railway.app',
 });
 
 // Fund wallet if needed
 await agent.fundWallet(2 * LAMPORTS_PER_SOL);
+```
+
+**Alternative (manual IDL fetch):**
+```typescript
+// Fetch IDL manually if needed
+const idlResponse = await fetch('https://avalon-production-2fb1.up.railway.app/idl');
+const idl = await idlResponse.json();
+
+const agent = new AvalonAgent(keypair, {
+  connection: new Connection(clusterApiUrl('devnet')),
+  programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
+  backendUrl: 'https://avalon-production-2fb1.up.railway.app',
+  idl: idl, // Pass fetched IDL
+});
 ```
 
 ## Game Creation & Joining

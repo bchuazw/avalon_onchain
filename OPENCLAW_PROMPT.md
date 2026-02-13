@@ -23,24 +23,30 @@ Spin up 5 subagents to play one full game of Avalon on our deployed platform. Us
 npm install avalon-agent-sdk@latest
 ```
 
-**SDK Fix (v0.1.2):** The SDK has been updated to fix Anchor 0.30.1 compatibility issues:
+**SDK Fix (v0.1.3):** The SDK has been updated to fix Anchor 0.30.1 compatibility issues:
 - Fixed `PublicKey.toBuffer is not a function` errors (v0.1.1)
 - Fixed IDL format compatibility (`publicKey` → `pubkey`) (v0.1.2)
-Make sure you're using version 0.1.2 or later.
+- Added `createWithBackendIdl()` method to automatically fetch correct IDL with discriminators (v0.1.2)
+Make sure you're using version 0.1.3 or later.
 
-**If you encounter IDL errors**, load IDL from backend:
+**⚠️ CRITICAL - MUST Use Backend IDL to Avoid Discriminator Mismatches:**
+
+The SDK's built-in IDL lacks instruction discriminators, which will cause `InstructionFallbackNotFound` errors. You **MUST** use `createWithBackendIdl()` to fetch the correct IDL:
+
 ```typescript
-// Fetch IDL from backend for compatibility
-const idlResponse = await fetch('https://avalon-production-2fb1.up.railway.app/idl');
-const idl = await idlResponse.json();
-
-const agent = new AvalonAgent(keypair, {
+// ✅ REQUIRED: Use createWithBackendIdl() to fetch IDL with correct discriminators
+// This prevents "InstructionFallbackNotFound" errors for all instructions
+const agent = await AvalonAgent.createWithBackendIdl(keypair, {
   connection: new Connection(clusterApiUrl('devnet')),
   programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
   backendUrl: 'https://avalon-production-2fb1.up.railway.app',
-  idl: idl, // Pass IDL from backend
 });
+
+// ❌ DO NOT USE: This will fail with discriminator errors
+// const agent = new AvalonAgent(keypair, { ... }); // Missing discriminators!
 ```
+
+**Why:** The deployed program requires exact instruction discriminators. The backend `/idl` endpoint provides the complete IDL with all correct discriminators matching the deployed program.
 
 **Game Flow (IMPORTANT - Follow this order):**
 1. **Create game on-chain** (Agent 1): `await agent.createGame(gameId)` - creates game on Solana
@@ -57,10 +63,23 @@ const agent = new AvalonAgent(keypair, {
 - `GET /game/:gameId` ✅
 - `GET /games` ✅ (returns `[]` if no games exist yet - this is normal)
 
-**SDK Import:**
+**SDK Import & Initialization:**
 ```typescript
 import { AvalonAgent, Connection, PublicKey, BN } from 'avalon-agent-sdk';
 import { clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
+
+// Create wallet
+const keypair = AvalonAgent.createWallet();
+
+// Initialize agent with backend IDL (REQUIRED for correct discriminators)
+const agent = await AvalonAgent.createWithBackendIdl(keypair, {
+  connection: new Connection(clusterApiUrl('devnet')),
+  programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
+  backendUrl: 'https://avalon-production-2fb1.up.railway.app',
+});
+
+// Fund wallet
+await agent.fundWallet(2 * LAMPORTS_PER_SOL);
 ```
 
 ---
@@ -68,7 +87,11 @@ import { clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 ## Short Version (Copy-Paste Ready)
 
 ```
-Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-nu-three.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk. Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1 (✅ deployed on devnet). 
+Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-nu-three.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk@latest. 
+
+⚠️ CRITICAL: You MUST use `await AvalonAgent.createWithBackendIdl(keypair, {...})` instead of `new AvalonAgent(...)` to fetch the correct IDL with discriminators. Using the regular constructor will cause "InstructionFallbackNotFound" errors.
+
+Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1 (✅ deployed on devnet). 
 
 CRITICAL FLOW: (1) Agent 1 creates game on-chain with createGame(), (2) Agents 2-5 join on-chain with joinGame(), (3) Agent 1 calls POST /assign-roles/:gameId with all playerPubkeys and vrfSeed to get merkleRoot, (4) Agent 1 starts game on-chain with startGame(gamePDA, vrfSeed, merkleRoot), (5) All 5 fetch roles via agent.fetchRole() which calls POST /role-inbox/:gameId, (6) All 5 submit role reveals on-chain, (7) Play game through team build, voting, quest, assassination. See BACKEND_API.md for endpoint details. All backend endpoints exist and work - /games returns [] if no games exist yet (normal).
 ```
