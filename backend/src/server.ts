@@ -113,6 +113,13 @@ async function main() {
     };
     broadcastToSpectators(voteData.gameId, chatMessage);
   });
+
+  const PORT = process.env.PORT || 3000;
+  app.listen(PORT, () => {
+    console.log(`[Server] HTTP API listening on port ${PORT}`);
+    console.log(`[Server] WebSocket listening on port ${process.env.WS_PORT || 8081}`);
+    initializeServer();
+  });
 }
 
 // Connected clients
@@ -210,7 +217,7 @@ app.get("/idl", async (req: Request, res: Response) => {
       try {
         const idlRes = await fetch(idlUrl);
         if (idlRes.ok) {
-          const idlJson = await idlRes.json();
+          const idlJson = await idlRes.json() as any;
           idlJson.address = PROGRAM_ID.toBase58();
           return res.json(idlJson);
         }
@@ -230,7 +237,7 @@ app.get("/idl", async (req: Request, res: Response) => {
     
     const idlPath = possiblePaths.find(p => fs.existsSync(p));
     if (idlPath) {
-      const idlJson = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
+      const idlJson = JSON.parse(fs.readFileSync(idlPath, "utf-8")) as any;
       idlJson.address = PROGRAM_ID.toBase58();
       res.json(idlJson);
     } else {
@@ -471,14 +478,6 @@ wss.on("connection", (ws: WebSocket, req: any) => {
   // Send welcome message
   ws.send(JSON.stringify({ type: "connected", message: "Welcome to Avalon Spectator" }));
 });
-
-  const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
-    console.log(`[Server] HTTP API listening on port ${PORT}`);
-    console.log(`[Server] WebSocket listening on port ${process.env.WS_PORT || 8081}`);
-    initializeServer();
-  });
-}
 
 main().catch((err) => {
   console.error("[Server] Startup failed:", err);
