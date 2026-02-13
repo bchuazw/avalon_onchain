@@ -68,13 +68,20 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
     if (gameId) {
       fetchGameState(gameId);
       connectWebSocket(gameId);
+      
+      // Poll for game state updates every 2 seconds (fallback if WebSocket fails)
+      // This ensures spectators see updates even when WebSocket on port 8081 isn't accessible
+      const pollInterval = setInterval(() => {
+        fetchGameState(gameId, true); // silent=true to avoid loading spinner on each poll
+      }, 2000);
+      
+      return () => {
+        if (ws) {
+          ws.close();
+        }
+        clearInterval(pollInterval);
+      };
     }
-
-    return () => {
-      if (ws) {
-        ws.close();
-      }
-    };
   }, [gameId]);
 
   // Auto-generated dialogue disabled - only show real agent chat messages
@@ -92,8 +99,8 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
     }
   };
 
-  const fetchGameState = async (id: string) => {
-    setLoading(true);
+  const fetchGameState = async (id: string, silent: boolean = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await fetch(`${BACKEND_URL}/game/${id}`);
       const data = await response.json();
@@ -101,15 +108,13 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
     } catch (error) {
       console.error('Failed to fetch game state:', error);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   const connectWebSocket = (id: string) => {
-    // Note: WebSocket on Railway may not be accessible (port 8081 not exposed)
-    // Chat messages from agents will still be stored, but may not appear in real-time
-    // until WebSocket is configured or HTTP polling is added
-    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + ':8081';
+    // WebSocket is now served on the same port as HTTP via /ws path
+    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + '/ws';
     const websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {
@@ -133,9 +138,9 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
       }
     };
 
-    websocket.onerror = () => {
-      console.warn('[WebSocket] Connection failed - chat messages may not appear in real-time. Agents can still send messages via POST /chat/:gameId');
-      // WebSocket may fail on Railway (port 8081 not exposed) - this is expected
+    websocket.onerror = (error) => {
+      console.warn('[WebSocket] Connection failed:', error);
+      // Polling will handle updates if WebSocket fails
     };
     
     websocket.onclose = () => {

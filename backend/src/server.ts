@@ -1,4 +1,5 @@
 import express, { Request, Response } from "express";
+import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import cors from "cors";
 import dotenv from "dotenv";
@@ -85,18 +86,19 @@ async function loadProgram(): Promise<Program<any> | null> {
 // Indexer is created in main() after loadProgram()
 let indexer!: GameIndexer;
 
-// WebSocket server for spectator view
-const wss = new WebSocketServer({ port: parseInt(process.env.WS_PORT || "8081") });
+// HTTP server (will be created in main())
+let httpServer: ReturnType<typeof createServer> | null = null;
+let wss: WebSocketServer | null = null;
 
 /** Create indexer and start HTTP server after IDL is loaded (supports IDL_JSON_URL). */
 async function main() {
   const program = await loadProgram();
   indexer = new GameIndexer(connection, PROGRAM_ID, program || undefined);
   indexer.on("stateUpdate", (gameState: GameState) => {
-    connectedClients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN && (client as any).gameId === gameState.gameId) {
-        client.send(JSON.stringify({ type: "stateUpdate", data: gameState }));
-      }
+    // Broadcast state updates via WebSocket
+    broadcastToSpectators(gameState.gameId, {
+      type: "stateUpdate",
+      data: gameState,
     });
   });
 
@@ -116,10 +118,61 @@ async function main() {
   });
 
   const PORT = process.env.PORT || 3000;
-  app.listen(PORT, () => {
+  
+  // Create HTTP server from Express app
+  httpServer = createServer(app);
+  
+  // Attach WebSocket server to HTTP server (same port, path-based)
+  wss = new WebSocketServer({ 
+    server: httpServer,
+    path: '/ws'
+  });
+  
+  // Set up WebSocket connection handling
+  setupWebSocket();
+  
+  // Start HTTP server (WebSocket is attached to it)
+  httpServer.listen(PORT, () => {
     console.log(`[Server] HTTP API listening on port ${PORT}`);
-    console.log(`[Server] WebSocket listening on port ${process.env.WS_PORT || 8081}`);
+    console.log(`[Server] WebSocket available at ws://localhost:${PORT}/ws`);
     initializeServer();
+  });
+}
+
+function setupWebSocket() {
+  if (!wss) return;
+  
+  wss.on("connection", (ws: WebSocket, req: any) => {
+    console.log("[WebSocket] New connection");
+    connectedClients.add(ws);
+
+    ws.on("message", (message: string) => {
+      try {
+        const data = JSON.parse(message);
+        console.log(`[WebSocket] Received message type: ${data.type}`);
+        
+        if (data.type === "subscribe" && data.gameId) {
+          (ws as any).gameId = data.gameId;
+          console.log(`[WebSocket] Client subscribed to game ${data.gameId}`);
+          
+          // Send current state
+          const state = indexer.getGameState(data.gameId);
+          if (state) {
+            ws.send(JSON.stringify({ type: "stateUpdate", data: state }));
+          }
+        }
+      } catch (error) {
+        console.error("[WebSocket] Error handling message:", error);
+      }
+    });
+
+    ws.on("close", () => {
+      console.log("[WebSocket] Connection closed");
+      connectedClients.delete(ws);
+    });
+
+    // Send welcome message
+    ws.send(JSON.stringify({ type: "connected", message: "Welcome to Avalon Spectator" }));
   });
 }
 
@@ -162,6 +215,7 @@ async function initializeServer() {
  * Broadcast message to all spectators of a game
  */
 function broadcastToSpectators(gameId: string, message: any) {
+  if (!wss) return;
   const payload = JSON.stringify(message);
   
   wss.clients.forEach((client) => {
@@ -455,39 +509,7 @@ app.get("/merkle-proof/:gameId/:playerPubkey", (req: Request, res: Response) => 
   }
 });
 
-// WebSocket handling
-wss.on("connection", (ws: WebSocket, req: any) => {
-  console.log("[WebSocket] New connection");
-  connectedClients.add(ws);
-
-  ws.on("message", (message: string) => {
-    try {
-      const data = JSON.parse(message);
-      console.log(`[WebSocket] Received message type: ${data.type}`);
-      
-      if (data.type === "subscribe" && data.gameId) {
-        (ws as any).gameId = data.gameId;
-        console.log(`[WebSocket] Client subscribed to game ${data.gameId}`);
-        
-        // Send current state
-        const state = indexer.getGameState(data.gameId);
-        if (state) {
-          ws.send(JSON.stringify({ type: "stateUpdate", data: state }));
-        }
-      }
-    } catch (error) {
-      console.error("[WebSocket] Error handling message:", error);
-    }
-  });
-
-  ws.on("close", () => {
-    console.log("[WebSocket] Connection closed");
-    connectedClients.delete(ws);
-  });
-
-  // Send welcome message
-  ws.send(JSON.stringify({ type: "connected", message: "Welcome to Avalon Spectator" }));
-});
+// WebSocket setup is now done in setupWebSocket() function called from main()
 
 main().catch((err) => {
   console.error("[Server] Startup failed:", err);
@@ -498,13 +520,15 @@ main().catch((err) => {
 process.on("SIGTERM", () => {
   console.log("[Server] SIGTERM received, shutting down...");
   indexer.stop();
-  wss.close();
+  wss?.close();
+  httpServer?.close();
   process.exit(0);
 });
 
 process.on("SIGINT", () => {
   console.log("[Server] SIGINT received, shutting down...");
   indexer.stop();
-  wss.close();
+  wss?.close();
+  httpServer?.close();
   process.exit(0);
 });

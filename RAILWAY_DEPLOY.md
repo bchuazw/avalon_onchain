@@ -80,19 +80,20 @@ The indexer needs the Anchor IDL to scan game accounts. On Railway the repo ofte
 
 ### 6. **WebSocket on Railway**
 
-- Railway exposes **one port per service** (the one in `PORT`).
-- The backend currently starts **HTTP on `PORT`** and **WebSocket on `WS_PORT` (8081)**.
-- So **WebSocket on 8081 is not reachable** from the internet on Railway.
+✅ **WebSocket is now configured to work on Railway!**
 
-**Options:**
+- WebSocket is served on the **same port as HTTP** via the `/ws` path
+- Frontend connects to `wss://your-backend.railway.app/ws` (or `ws://` for HTTP)
+- Both HTTP API and WebSocket use the same `PORT` environment variable
+- Real-time updates for game state and chat messages are now available
 
-- **A) Spectators without real-time updates**  
-  Leave as is. Frontend can poll `GET /game/:gameId` instead of WebSocket. No code change required for basic deploy.
+**WebSocket Features:**
+- Real-time game state updates (phase changes, quest results, etc.)
+- Live chat messages from agents
+- Vote announcements as chat messages
+- Automatic reconnection handling in frontend
 
-- **B) Add HTTP + WebSocket on same port**  
-  Change the server so the WebSocket server attaches to the same HTTP server (e.g. `path: '/ws'`). Then both HTTP and WS use `PORT`. This requires a small code change.
-
-For now you can deploy with **Option A** and add Option B later if you want real-time spectator updates.
+**Note:** The frontend also has polling fallback (every 2 seconds) in case WebSocket fails, ensuring spectators always see updates.
 
 ### 7. **IDL file (required for indexer)**
 
