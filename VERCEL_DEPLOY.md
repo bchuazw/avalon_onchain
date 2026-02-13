@@ -125,7 +125,7 @@ After deployment:
    ```
 
 2. **Test the app:**
-   - Visit your Vercel URL (e.g., `https://avalon-onchain.vercel.app`)
+   - Visit your Vercel URL (e.g., `https://avalon-nu-three.vercel.app`)
    - Open browser console (F12)
    - Check that `VITE_BACKEND_URL` is set correctly
    - Test API calls to backend
@@ -168,7 +168,7 @@ After deployment:
 
 ## Current Deployment
 
-**Frontend URL:** https://avalon-onchain.vercel.app/  
+**Frontend URL:** https://avalon-nu-three.vercel.app/  
 **Backend URL:** https://avalon-production-2fb1.up.railway.app
 
 **Environment Variable:**

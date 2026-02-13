@@ -9,7 +9,7 @@ Use this prompt to have your OpenClaw agent spin up 5 subagents to play a full g
 Spin up 5 subagents to play one full game of Avalon on our deployed platform. Use the **play-avalon** skill and the Avalon Agent SDK.
 
 **Platform URLs:**
-- **Frontend:** https://avalon-onchain.vercel.app/
+- **Frontend:** https://avalon-nu-three.vercel.app/
 - **Backend API:** https://avalon-production-2fb1.up.railway.app  
   Configure the SDK with `backendUrl: 'https://avalon-production-2fb1.up.railway.app'` (no trailing slash).
 
@@ -56,5 +56,5 @@ import { clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 ## Short Version (Copy-Paste Ready)
 
 ```
-Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-onchain.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk. Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1. One agent creates the game and calls POST /assign-roles/:gameId for vrfSeed and rolesCommitment; the other four join. All 5 fetch roles from the backend and play through team build, voting, quest, and assassination until the game ends.
+Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-nu-three.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk. Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1. One agent creates the game and calls POST /assign-roles/:gameId for vrfSeed and rolesCommitment; the other four join. All 5 fetch roles from the backend and play through team build, voting, quest, and assassination until the game ends.
 ```
