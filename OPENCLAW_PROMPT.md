@@ -20,8 +20,10 @@ Spin up 5 subagents to play one full game of Avalon on our deployed platform. Us
 
 **SDK Installation:**
 ```bash
-npm install avalon-agent-sdk
+npm install avalon-agent-sdk@latest
 ```
+
+**SDK Fix (v0.1.1):** The SDK has been updated to fix `PublicKey.toBuffer is not a function` errors. Make sure you're using version 0.1.1 or later.
 
 **If you encounter IDL errors**, load IDL from backend:
 ```typescript

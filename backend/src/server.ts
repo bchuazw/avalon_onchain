@@ -99,6 +99,22 @@ async function main() {
     });
   });
 
+  // Listen for vote chat messages and broadcast them
+  indexer.on("voteChat", (voteData: any) => {
+    const chatMessage = {
+      type: "chatMessage",
+      data: {
+        id: `vote-${Date.now()}-${Math.random()}`,
+        playerIndex: voteData.playerIndex,
+        role: "Unknown", // Role not available at vote time, will show as Unknown
+        text: voteData.text,
+        timestamp: voteData.timestamp,
+      },
+    };
+    broadcastToSpectators(voteData.gameId, chatMessage);
+  });
+}
+
 // Connected clients
 const clients: Map<string, WebSocket> = new Map(); // gameId -> client
 const connectedClients: Set<WebSocket> = new Set(); // All connected clients for broadcasting

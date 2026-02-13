@@ -66,7 +66,7 @@ export const AVALON_IDL: any = {
         { name: "player", isMut: false, isSigner: true },
         { name: "gameState", isMut: true, isSigner: false },
       ],
-      args: [{ name: "team", type: { vec: "publicKey" } }],
+      args: [{ name: "team", type: { vec: "pubkey" } }],
     },
     {
       name: "voteTeam",
@@ -380,8 +380,8 @@ export class AvalonAgent {
     const [playerRolePDA] = PublicKey.findProgramAddressSync(
       [
         Buffer.from("player_role"),
-        gamePDA.toBuffer(),
-        this.publicKey.toBuffer(),
+        gamePDA.toBytes(),
+        this.publicKey.toBytes(),
       ],
       this.program.programId
     );
@@ -501,8 +501,8 @@ export class AvalonAgent {
     const [playerRolePDA] = PublicKey.findProgramAddressSync(
       [
         Buffer.from("player_role"),
-        gamePDA.toBuffer(),
-        this.publicKey.toBuffer(),
+        gamePDA.toBytes(),
+        this.publicKey.toBytes(),
       ],
       this.program.programId
     );

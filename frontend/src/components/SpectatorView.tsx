@@ -34,66 +34,8 @@ interface Game {
 // Normalize backend URL - remove trailing slash
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || 'https://avalon-production-2fb1.up.railway.app').replace(/\/+$/, '');
 
-// ============================================================
-// Dialogue templates for each game phase
-// ============================================================
-const PHASE_DIALOGUES: Record<string, string[][]> = {
-  Lobby: [
-    ["Ready for this mission.", "Let's go.", "Gathering intel...", "The council assembles."],
-  ],
-  RoleAssignment: [
-    ["I sense darkness among us.", "Stay vigilant.", "Trust no one.", "My role is clear."],
-  ],
-  TeamBuilding: [
-    ["I propose we send our best.", "Not that one... suspicious.", "Trust me on this.", "I have a good feeling about this team."],
-    ["Wait, why them?", "This team seems balanced.", "I'll support this proposal.", "I'm not sure about this..."],
-    ["We need to be careful here.", "Who can we trust?", "Let's think about this strategically.", "I have my doubts..."],
-    ["This is a critical decision.", "We must choose wisely.", "Every choice matters now.", "I'm analyzing the options..."],
-    ["Time is running out.", "We need to decide soon.", "Let's discuss our strategy.", "What's everyone thinking?"],
-  ],
-  Voting: [
-    ["I approve this team!", "Reject! Something's off.", "This team will succeed.", "I have concerns..."],
-    ["Think carefully before you vote.", "The fate of the realm depends on us.", "Trust your instincts."],
-    ["This vote is crucial.", "We must be united.", "I'm voting with conviction.", "Every vote counts..."],
-    ["I've made my decision.", "Let's see what happens.", "The council will decide.", "I stand by my choice."],
-    ["The tension is palpable.", "This could change everything.", "We're at a crossroads.", "History will remember this moment."],
-  ],
-  Quest: [
-    ["For the good of the realm!", "Succeed the mission!", "I'll do what I must...", "The quest begins..."],
-    ["Hold steady...", "We can do this.", "Remember what's at stake."],
-  ],
-  Assassination: [
-    ["I know who Merlin is...", "The seer will fall.", "Take the shot.", "I must choose wisely..."],
-    ["Protect the seer!", "Stay hidden...", "Don't give it away."],
-  ],
-  Ended: [
-    ["Well played, everyone.", "The prophecy is fulfilled.", "Until next time.", "What a game!"],
-  ],
-};
-
-function generatePhaseDialogue(phase: string, playerCount: number): { playerIndex: number; text: string }[] {
-  const dialogueSets = PHASE_DIALOGUES[phase] || PHASE_DIALOGUES.Lobby;
-  const messages: { playerIndex: number; text: string }[] = [];
-
-  for (const set of dialogueSets) {
-    // Pick 2-3 random players and messages
-    const numMessages = Math.min(3, Math.floor(Math.random() * 3) + 1);
-    const usedPlayers = new Set<number>();
-
-    for (let i = 0; i < numMessages && i < playerCount; i++) {
-      let pIdx: number;
-      do {
-        pIdx = Math.floor(Math.random() * playerCount);
-      } while (usedPlayers.has(pIdx) && usedPlayers.size < playerCount);
-      usedPlayers.add(pIdx);
-
-      const text = set[Math.floor(Math.random() * set.length)];
-      messages.push({ playerIndex: pIdx, text });
-    }
-  }
-
-  return messages;
-}
+// Auto-generated dialogue removed - only real agent chat messages are shown
+// Agents send chat via POST /chat/:gameId endpoint, which broadcasts via WebSocket
 
 // ============================================================
 // SpectatorView component
@@ -105,8 +47,6 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
   const [games, setGames] = useState<Game[]>([]);
   const [gamesLoading, setGamesLoading] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const chatIdCounter = useRef(0);
-  const lastPhaseRef = useRef<string>('');
   const currentGameIdRef = useRef<string | null>(null);
   const isMobile = useIsMobile();
 
@@ -120,7 +60,6 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
   useEffect(() => {
     if (gameId !== currentGameIdRef.current) {
       setChatMessages([]);
-      lastPhaseRef.current = '';
       currentGameIdRef.current = gameId;
     }
   }, [gameId]);
@@ -138,59 +77,8 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
     };
   }, [gameId]);
 
-  // Generate dialogue when game phase changes
-  // NOTE: Voting phase dialogue is disabled - votes are announced as chat messages from simulation
-  useEffect(() => {
-    if (!gameState) return;
-
-    const currentPhase = typeof gameState.phase === 'object'
-      ? Object.keys(gameState.phase)[0]
-      : gameState.phase;
-
-    if (currentPhase && currentPhase !== lastPhaseRef.current) {
-      lastPhaseRef.current = currentPhase;
-
-      // Skip dialogue generation for Voting phase - votes will be announced as chat messages
-      if (currentPhase === 'Voting') {
-        return;
-      }
-
-      const playerCount = gameState.playerCount || (gameState.players?.length || 0);
-      if (playerCount === 0) return;
-
-      const dialogues = generatePhaseDialogue(currentPhase, playerCount);
-
-      // Get role info for messages
-      const getRole = (idx: number) => {
-        if (!gameState.players || !gameState.players[idx]) return 'Unknown';
-        const p = gameState.players[idx];
-        return typeof p === 'string' ? 'Unknown' : (p.role || 'Unknown');
-      };
-
-      // Stagger messages over time - longer delays for discussion phases
-      const isDiscussionPhase = currentPhase === 'TeamBuilding';
-      const baseDelay = isDiscussionPhase ? 5000 : 2500; // Longer initial delay for discussion
-      const messageSpacing = isDiscussionPhase ? 4000 : 2500; // More spacing between messages
-      
-      // Generate more messages for discussion phases to simulate longer discussion
-      const extendedDialogues = isDiscussionPhase 
-        ? [...dialogues, ...generatePhaseDialogue(currentPhase, playerCount)] // Double the messages
-        : dialogues;
-
-      extendedDialogues.forEach((d, i) => {
-        setTimeout(() => {
-          const msg: ChatMessage = {
-            id: `chat-${chatIdCounter.current++}`,
-            playerIndex: d.playerIndex,
-            role: getRole(d.playerIndex),
-            text: d.text,
-            timestamp: Date.now(),
-          };
-          setChatMessages((prev) => [...prev.slice(-20), msg]);
-        }, baseDelay + i * messageSpacing + Math.random() * 2000);
-      });
-    }
-  }, [gameState]);
+  // Auto-generated dialogue disabled - only show real agent chat messages
+  // Chat messages come from agents via POST /chat/:gameId endpoint and WebSocket
 
   const fetchGames = async () => {
     try {
@@ -218,7 +106,11 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
   };
 
   const connectWebSocket = (id: string) => {
-    const websocket = new WebSocket('ws://localhost:8081');
+    // Note: WebSocket on Railway may not be accessible (port 8081 not exposed)
+    // Chat messages from agents will still be stored, but may not appear in real-time
+    // until WebSocket is configured or HTTP polling is added
+    const wsUrl = BACKEND_URL.replace('https://', 'wss://').replace('http://', 'ws://') + ':8081';
+    const websocket = new WebSocket(wsUrl);
 
     websocket.onopen = () => {
       websocket.send(JSON.stringify({ type: 'subscribe', gameId: id }));
@@ -242,7 +134,12 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
     };
 
     websocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
+      console.warn('[WebSocket] Connection failed - chat messages may not appear in real-time. Agents can still send messages via POST /chat/:gameId');
+      // WebSocket may fail on Railway (port 8081 not exposed) - this is expected
+    };
+    
+    websocket.onclose = () => {
+      console.log('[WebSocket] Connection closed');
     };
 
     setWs(websocket);
@@ -480,8 +377,9 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
             Conversation Log
           </div>
           {chatMessages.length === 0 ? (
-            <div style={{ color: 'rgba(255,255,255,0.3)', fontSize: 'clamp(10px, 2.5vw, 12px)', fontFamily: 'Rajdhani, sans-serif' }}>
-              Waiting for activity...
+            <div style={{ textAlign: 'center', padding: '2rem', color: 'rgba(255, 255, 255, 0.5)' }}>
+              <p>No messages yet.</p>
+              <p style={{ fontSize: '0.85rem', marginTop: '0.5rem' }}>Waiting for agents to send chat...</p>
             </div>
           ) : (
             chatMessages.slice(-15).map((msg) => (

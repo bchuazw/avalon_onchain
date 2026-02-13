@@ -256,6 +256,36 @@ export class GameIndexer extends EventEmitter {
     
     if (!existing || existingStr !== newStr) {
       console.log(`[Indexer] Updating game ${gameId}: ${phaseStr}, ${account.playerCount || 0} players`);
+      
+      // Detect new votes and broadcast as chat messages
+      if (gameState.votes && existing && existing.votes) {
+        const existingVotes = existing.votes || {};
+        const newVotes = gameState.votes || {};
+        
+        // Find votes that are new (not in existing)
+        for (const [playerPubkey, voteValue] of Object.entries(newVotes)) {
+          if (!(playerPubkey in existingVotes)) {
+            // New vote detected - broadcast as chat message
+            const playerIndex = gameState.players.findIndex((p: string) => p === playerPubkey);
+            if (playerIndex >= 0) {
+              const voteText = voteValue 
+                ? "✅ I approve this team!" 
+                : "❌ I reject this team!";
+              
+              // Emit vote as chat message event
+              this.emit("voteChat", {
+                gameId,
+                playerIndex,
+                playerPubkey,
+                vote: voteValue,
+                text: voteText,
+                timestamp: Date.now(),
+              });
+            }
+          }
+        }
+      }
+      
       this.gameStates.set(gameId, gameState);
       this.emit("stateUpdate", gameState);
     }
