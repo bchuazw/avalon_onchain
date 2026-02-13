@@ -125,17 +125,18 @@ cp target/idl/avalon_game.json backend/target/idl/avalon_game.json
 
 ## Step 3: Make SDK Accessible to Agents
 
-### Option A: Publish to npm (Recommended)
+### Option A: Install from npm (Recommended)
+
+The SDK is published as `avalon-agent-sdk`:
 
 ```bash
-cd avalon_onchain/sdk
+# Agents can install:
+npm install avalon-agent-sdk
+```
 
-# Update package.json with correct version
-# Then publish
-npm publish
-
-# Agents can then install:
-# npm install avalon-agent-sdk
+Then import:
+```typescript
+import { AvalonAgent, Connection, PublicKey, BN } from 'avalon-agent-sdk';
 ```
 
 ### Option B: Host SDK as Git Dependency
@@ -165,6 +166,11 @@ npm run build
 ## Step 4: Update Agent Configuration
 
 Your OpenClaw agents need:
+
+```bash
+# Install the SDK
+npm install avalon-agent-sdk
+```
 
 ```typescript
 import { AvalonAgent, Connection, PublicKey, BN } from 'avalon-agent-sdk';

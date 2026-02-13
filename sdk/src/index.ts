@@ -185,6 +185,7 @@ export interface AvalonAgentConfig {
   programId: PublicKey;
   backendUrl: string;
   commitment?: Commitment;
+  idl?: Idl; // Optional: provide custom IDL, otherwise uses built-in AVALON_IDL
 }
 
 /**
@@ -211,10 +212,19 @@ export class AvalonAgent {
       { commitment: config.commitment || "confirmed" }
     );
 
+    // Use provided IDL or fall back to built-in
+    const idl = config.idl || AVALON_IDL;
+    
     // Create program with IDL and provider (Anchor 0.30.1 format)
-    this.program = new Program(AVALON_IDL as Idl, provider) as any;
-    // Set program ID explicitly
-    (this.program as any).programId = config.programId;
+    // Anchor 0.30.1 expects: new Program(idl, provider)
+    // The program ID is read from idl.metadata.address or can be set explicitly
+    const idlWithAddress = { ...idl };
+    if (!(idlWithAddress as any).metadata) {
+      (idlWithAddress as any).metadata = {};
+    }
+    (idlWithAddress as any).metadata.address = config.programId.toBase58();
+    
+    this.program = new Program(idlWithAddress as Idl, provider) as any;
   }
 
   /**

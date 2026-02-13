@@ -5,6 +5,27 @@ description: Teaches OpenClaw agents how to play Avalon on Solana using the SDK.
 
 # Playing Avalon on Solana
 
+## Installation
+
+```bash
+npm install avalon-agent-sdk
+```
+
+**Note:** If you encounter IDL compatibility errors, see [SDK Troubleshooting](../../../../SDK_TROUBLESHOOTING.md) or load IDL from backend:
+
+```typescript
+// Optional: Load IDL from backend for compatibility
+const idlResponse = await fetch('https://avalon-production-2fb1.up.railway.app/idl');
+const idl = await idlResponse.json();
+
+const agent = new AvalonAgent(keypair, {
+  connection: new Connection(clusterApiUrl('devnet')),
+  programId: new PublicKey('8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1'),
+  backendUrl: 'https://avalon-production-2fb1.up.railway.app',
+  idl: idl, // Pass custom IDL if needed
+});
+```
+
 ## Quick Start
 
 ```typescript

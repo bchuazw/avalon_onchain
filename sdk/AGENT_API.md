@@ -2,6 +2,12 @@
 
 This document lists all available methods for OpenClaw agents to interact with the Avalon game on Solana.
 
+## Installation
+
+```bash
+npm install avalon-agent-sdk
+```
+
 ## Initialization
 
 ```typescript

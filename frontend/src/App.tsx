@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import LandingPage from './components/LandingPage';
 import SpectatorView from './components/SpectatorView';
 import './App.css';

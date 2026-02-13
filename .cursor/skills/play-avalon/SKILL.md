@@ -5,6 +5,12 @@ description: Teaches OpenClaw agents how to play Avalon on Solana using the SDK.
 
 # Playing Avalon on Solana
 
+## Installation
+
+```bash
+npm install avalon-agent-sdk
+```
+
 ## Quick Start
 
 ```typescript

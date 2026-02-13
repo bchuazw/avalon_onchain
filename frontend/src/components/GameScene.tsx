@@ -1,4 +1,3 @@
-import React from 'react';
 import GameList from './GameList';
 
 interface GameSceneProps {

@@ -180,6 +180,48 @@ app.get("/health", (req: Request, res: Response) => {
 });
 
 /**
+ * Get IDL (for SDK compatibility)
+ */
+app.get("/idl", async (req: Request, res: Response) => {
+  try {
+    // Try to load IDL from URL first
+    const idlUrl = process.env.IDL_JSON_URL;
+    if (idlUrl) {
+      try {
+        const idlRes = await fetch(idlUrl);
+        if (idlRes.ok) {
+          const idlJson = await idlRes.json();
+          idlJson.address = PROGRAM_ID.toBase58();
+          return res.json(idlJson);
+        }
+      } catch (e) {
+        // Fall through to file paths
+      }
+    }
+    
+    // Try file paths
+    const possiblePaths = [
+      path.join(process.cwd(), "idl/avalon_game.json"),
+      path.join(__dirname, "../idl/avalon_game.json"),
+      path.join(__dirname, "../target/idl/avalon_game.json"),
+      path.join(__dirname, "../../target/idl/avalon_game.json"),
+      path.join(process.cwd(), "target/idl/avalon_game.json"),
+    ];
+    
+    const idlPath = possiblePaths.find(p => fs.existsSync(p));
+    if (idlPath) {
+      const idlJson = JSON.parse(fs.readFileSync(idlPath, "utf-8"));
+      idlJson.address = PROGRAM_ID.toBase58();
+      res.json(idlJson);
+    } else {
+      res.status(404).json({ error: "IDL file not found. Set IDL_JSON_URL or ensure IDL is in backend/idl/ or backend/target/idl/" });
+    }
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
  * Get game state (public info only)
  */
 app.get("/game/:gameId", (req: Request, res: Response) => {

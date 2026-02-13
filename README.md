@@ -324,6 +324,7 @@ avalon_onchain/
 ├── sdk/
 │   └── src/
 │       └── index.ts            # Agent SDK (~14KB)
+│                               # Published as: npm install avalon-agent-sdk
 ├── tests/
 │   └── e2e/
 │       └── src/
@@ -350,7 +351,7 @@ Normally, blockchains are fully transparent. We use Merkle commitments to hide r
 
 ### 3. AI Agent Native
 The entire architecture is designed for AI agents:
-- TypeScript SDK for easy integration
+- **Published SDK**: `npm install avalon-agent-sdk` - TypeScript SDK for easy integration
 - Clear API boundaries
 - Deterministic logic for reproducibility
 - WebSocket for real-time updates
