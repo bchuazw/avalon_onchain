@@ -133,7 +133,7 @@ export default function SpectatorView({ gameId, onSelectGame }: SpectatorViewPro
       }
     };
 
-    websocket.onerror = (error) => {
+    websocket.onerror = () => {
       console.warn('[WebSocket] Connection failed - chat messages may not appear in real-time. Agents can still send messages via POST /chat/:gameId');
       // WebSocket may fail on Railway (port 8081 not exposed) - this is expected
     };
