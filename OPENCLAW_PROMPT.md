@@ -37,13 +37,20 @@ const agent = new AvalonAgent(keypair, {
 });
 ```
 
-**Game Flow:**
-1. One agent creates the game and calls `POST https://avalon-production-2fb1.up.railway.app/assign-roles/:gameId` with `playerPubkeys` and `vrfSeed` to get `vrfSeed` and `rolesCommitment`.
-2. The other four agents join the game.
-3. All 5 agents use `backendUrl` for role inbox (`POST /role-inbox/:gameId`) and game state (`GET /game/:gameId`).
-4. Play the full game: start game and role reveal → team building (leader proposes) → voting → quest (team members vote) → repeat until 3 quests resolved → assassination if applicable.
-5. Each subagent should act according to its role (good/evil) and call the SDK methods for propose, vote, and quest votes.
-6. Run until the game ends.
+**Game Flow (IMPORTANT - Follow this order):**
+1. **Create game on-chain** (Agent 1): `await agent.createGame(gameId)` - creates game on Solana
+2. **Join game on-chain** (Agents 2-5): `await agent.joinGame(gamePDA)` - all players join
+3. **Assign roles via backend** (Agent 1, after all joined): `POST /assign-roles/:gameId` with `{ playerPubkeys: [...], vrfSeed: [...] }` - returns `merkleRoot`
+4. **Start game on-chain** (Agent 1): `await agent.startGame(gamePDA, vrfSeed, merkleRoot)` - commits roles
+5. **Fetch roles from backend** (All 5 agents): `await agent.fetchRole(gameId)` - calls `POST /role-inbox/:gameId` internally
+6. **Submit role reveal on-chain** (All 5): `await agent.submitRoleReveal(gamePDA)` - reveals roles
+7. **Play game**: Team building → Voting → Quest → Repeat until 3 quests → Assassination if needed
+
+**Backend API Documentation:** See `BACKEND_API.md` for complete endpoint details. All endpoints exist and work correctly:
+- `POST /assign-roles/:gameId` ✅
+- `POST /role-inbox/:gameId` ✅  
+- `GET /game/:gameId` ✅
+- `GET /games` ✅ (returns `[]` if no games exist yet - this is normal)
 
 **SDK Import:**
 ```typescript
@@ -56,5 +63,7 @@ import { clusterApiUrl, LAMPORTS_PER_SOL } from '@solana/web3.js';
 ## Short Version (Copy-Paste Ready)
 
 ```
-Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-nu-three.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk. Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1. One agent creates the game and calls POST /assign-roles/:gameId for vrfSeed and rolesCommitment; the other four join. All 5 fetch roles from the backend and play through team build, voting, quest, and assassination until the game ends.
+Spin up 5 subagents to play one Avalon game on our live stack. Frontend: https://avalon-nu-three.vercel.app/ . Backend: https://avalon-production-2fb1.up.railway.app — use this as backendUrl in the Avalon SDK (no trailing slash). Install SDK: npm install avalon-agent-sdk. Use the play-avalon skill; devnet, program ID 8FrTvMZ3VhKzpvMJJfmgwLbnkR9wT97Rni2m8j6bhKr1. 
+
+CRITICAL FLOW: (1) Agent 1 creates game on-chain with createGame(), (2) Agents 2-5 join on-chain with joinGame(), (3) Agent 1 calls POST /assign-roles/:gameId with all playerPubkeys and vrfSeed to get merkleRoot, (4) Agent 1 starts game on-chain with startGame(gamePDA, vrfSeed, merkleRoot), (5) All 5 fetch roles via agent.fetchRole() which calls POST /role-inbox/:gameId, (6) All 5 submit role reveals on-chain, (7) Play game through team build, voting, quest, assassination. See BACKEND_API.md for endpoint details. All backend endpoints exist and work - /games returns [] if no games exist yet (normal).
 ```
